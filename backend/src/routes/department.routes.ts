@@ -1,0 +1,59 @@
+import { Router } from "express";
+
+import {
+  create,
+  getAll,
+  getOne,
+  update,
+  remove,
+} from "../controllers/department.controller.js";
+
+import { authenticate } from "../middleware/auth.middleware.js";
+import { requirePermission } from "../middleware/rbac.middleware.js";
+import { validate } from "../middleware/validation.middleware.js";
+
+import {
+  createDepartmentSchema,
+  updateDepartmentSchema,
+} from "../validators/department.validator.js";
+
+const router = Router();
+
+router.post(
+  "/",
+  authenticate,
+  requirePermission("department:create"),
+  validate(createDepartmentSchema),
+  create
+);
+
+router.get(
+  "/",
+  authenticate,
+  requirePermission("department:read"),
+  getAll
+);
+
+router.get(
+  "/:id",
+  authenticate,
+  requirePermission("department:read"),
+  getOne
+);
+
+router.patch(
+  "/:id",
+  authenticate,
+  requirePermission("department:update"),
+  validate(updateDepartmentSchema),
+  update
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  requirePermission("department:delete"),
+  remove
+);
+
+export default router;

@@ -1,0 +1,67 @@
+@import "@fontsource/raleway/400.css";
+@import "@fontsource/raleway/500.css";
+@import "@fontsource/raleway/600.css";
+@import "@fontsource/raleway/700.css";
+
+:root {
+  font-family: "Raleway", sans-serif;
+  color: #262626;
+  background: #fafafa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --font-primary: "Raleway", sans-serif;
+  --color-brand: #262626;
+  --color-brand-hover: #000000;
+  --color-on-brand: #ffffff;
+  --color-ink: #171717;
+  --color-secondary: #666666;
+  --color-muted: #969696;
+  --color-white: #ffffff;
+  --color-canvas: #fafafa;
+  --color-soft: #f3f3f3;
+  --color-hover: #fcfcfc;
+  --color-border: #e7e7e7;
+  --color-border-strong: #d8d8d8;
+  --sidebar-width: 254px;
+
+  font-optical-sizing: auto;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--color-canvas);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  font-family: var(--font-primary);
+  background: var(--color-canvas);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+}
+
+::selection {
+  color: var(--color-white);
+  background: var(--color-brand);
+}

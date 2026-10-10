@@ -1,0 +1,13 @@
+import { Router } from "express";
+import { create, getAll, getOne, update, remove, } from "../controllers/position.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { requirePermission } from "../middleware/rbac.middleware.js";
+import { validate } from "../middleware/validation.middleware.js";
+import { createPositionSchema, updatePositionSchema, } from "../validators/position.validator.js";
+const router = Router();
+router.post("/", authenticate, requirePermission("position:create"), validate(createPositionSchema), create);
+router.get("/", authenticate, requirePermission("position:read"), getAll);
+router.get("/:id", authenticate, requirePermission("position:read"), getOne);
+router.patch("/:id", authenticate, requirePermission("position:update"), validate(updatePositionSchema), update);
+router.delete("/:id", authenticate, requirePermission("position:delete"), remove);
+export default router;

@@ -1,0 +1,49 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+backend/dist/
+
+# Deployment archives
+*.zip
+
+# Logs and coverage
+*.log
+coverage/
+
+# Editor and operating system files
+.vscode/
+.DS_Store
+Thumbs.db
+
+.README1
+
+
+# Generated Prisma client
+backend/src/generated/prisma/
+
+# Local deployment copy
+backend/deploy/
+
+# Local archives
+*.zip
+
+# Generated Prisma client
+backend/src/generated/prisma/
+
+# Local deployment copy
+backend/deploy/
+
+# Build output
+frontend/dist/
+backend/dist/
+
+# Archives
+*.zip

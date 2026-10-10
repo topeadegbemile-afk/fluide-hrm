@@ -1,0 +1,25 @@
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+backend/dist/
+
+# Deployment archives
+*.zip
+
+# Logs and coverage
+*.log
+coverage/
+
+# Local editor settings
+.vscode/
+.DS_Store
+Thumbs.db
