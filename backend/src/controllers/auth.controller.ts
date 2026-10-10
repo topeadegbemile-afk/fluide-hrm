@@ -5,10 +5,22 @@ import {
   refreshAccessToken,
   logoutUser,
 } from "../services/auth.service.js";
+import { setInitialPassword } from "../services/user.service.js";
 
 import { prisma } from "../config/database.js";
 
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+
+export async function setPassword(req: Request, res: Response): Promise<void> {
+  try {
+    await setInitialPassword(req.body.token, req.body.password);
+    res.status(200).json({ success: true, message: "Password set successfully. You can now sign in.", data: null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to set password";
+    const statusCode = message.includes("invalid or has expired") ? 400 : 500;
+    res.status(statusCode).json({ success: false, message, error: statusCode === 400 ? "INVALID_SETUP_LINK" : "PASSWORD_SETUP_FAILED" });
+  }
+}
 
 /**
  * POST /api/v1/auth/login

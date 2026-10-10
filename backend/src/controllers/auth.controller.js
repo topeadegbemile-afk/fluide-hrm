@@ -17,11 +17,14 @@ export async function login(req, res) {
         const message = error instanceof Error
             ? error.message
             : "Unable to login";
-        const statusCode = message === "Invalid email or password"
-            ? 401
-            : message === "Your account is not active"
-                ? 403
-                : 500;
+            const statusCode =
+      message === "Invalid email or password"
+        ? 401
+        : message === "Your account is not active"
+          ? 403
+          : message.startsWith("Please use your account setup link")
+            ? 403
+            : 500;
         res.status(statusCode).json({
             success: false,
             message,

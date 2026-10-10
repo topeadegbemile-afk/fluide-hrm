@@ -11,8 +11,9 @@ import {
   getAll,
   getAvailableEmployeesController,
   getOne,
-  reactivate,
+ reactivate,
   remove,
+  resendSetupInvitationController,
   update,
 } from "../controllers/user.controller.js";
 
@@ -62,6 +63,12 @@ router.delete(
   "/:id",
   requirePermission("user:delete"),
   remove,
+);
+
+router.post(
+  "/:id/resend-setup-invitation",
+  requirePermission("user:update"),
+  resendSetupInvitationController,
 );
 
 router.patch(

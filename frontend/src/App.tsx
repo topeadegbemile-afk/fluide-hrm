@@ -36,6 +36,7 @@ import { EmployeesPage } from './pages/EmployeesPage'
 import { MyPersonalInformationPage } from './pages/MyPersonalInformationPage'
 import { HandbookPage } from './pages/HandbookPage'
 import { LoginPage } from './pages/LoginPage'
+import { SetPasswordPage } from './pages/SetPasswordPage'
 import { LeavePage } from './pages/LeavePage'
 import { OrganogramPage } from './pages/OrganogramPage'
 import { PositionsPage } from './pages/PositionsPage'
@@ -312,6 +313,7 @@ function App() {
     <Routes>
       <Route element={<PublicOnly />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
       </Route>
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>

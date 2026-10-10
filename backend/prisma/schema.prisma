@@ -42,6 +42,8 @@ model User {
   id           String     @id @default(uuid())
   email        String     @unique
   passwordHash String
+  setupTokenHash String?
+  setupTokenExpiresAt DateTime?
   status       UserStatus @default(ACTIVE)
 
   employee      Employee?

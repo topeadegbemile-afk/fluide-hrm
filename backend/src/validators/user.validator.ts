@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const createUserSchema = z.object({
   email: z.string().trim().toLowerCase().email("Please provide a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).default("ACTIVE"),
   employeeId: z.string().uuid().optional(),
   roleIds: z.array(z.string().uuid()).default([]),

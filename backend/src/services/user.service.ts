@@ -1,5 +1,7 @@
 import { prisma } from "../config/database.js";
 import { hashPassword } from "../utils/password.js";
+import { createHash, randomBytes } from "node:crypto";
+import { sendAccountSetupEmail } from "./email.service.js";
 import type {
   CreateUserInput,
   UpdateUserInput,
@@ -115,8 +117,12 @@ export async function getAvailableEmployees() {
  */
 export async function createUser(data: CreateUserInput) {
   const email = data.email.toLowerCase().trim();
+  const setupToken = randomBytes(32).toString("base64url");
+  const setupTokenHash = createHash("sha256").update(setupToken).digest("hex");
+  const setupTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const initialPasswordHash = await hashPassword(randomBytes(32).toString("hex"));
 
-  return prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(async (tx) => {
     // -----------------------------------------
     // 1. Check duplicate email
     // -----------------------------------------
@@ -181,21 +187,15 @@ export async function createUser(data: CreateUserInput) {
     }
 
     // -----------------------------------------
-    // 4. Hash password
-    // -----------------------------------------
-
-    const passwordHash = await hashPassword(
-      data.password,
-    );
-
-    // -----------------------------------------
-    // 5. Create user
+    // 4. Create the account with a random, undisclosed initial password.
     // -----------------------------------------
 
     const user = await tx.user.create({
       data: {
         email,
-        passwordHash,
+        passwordHash: initialPasswordHash,
+        setupTokenHash,
+        setupTokenExpiresAt,
         status: data.status,
 
         userRoles:
@@ -216,7 +216,7 @@ export async function createUser(data: CreateUserInput) {
     });
 
     // -----------------------------------------
-    // 6. Link employee to user
+    // 5. Link employee to user
     // -----------------------------------------
 
     if (data.employeeId) {
@@ -232,7 +232,7 @@ export async function createUser(data: CreateUserInput) {
     }
 
     // -----------------------------------------
-    // 7. Return updated user
+    // 6. Return the created user
     // -----------------------------------------
 
     return tx.user.findUniqueOrThrow({
@@ -242,7 +242,100 @@ export async function createUser(data: CreateUserInput) {
       select: userSelection,
     });
   });
+
+  try {
+    await sendAccountSetupEmail(email, setupToken);
+  } catch {
+    throw new Error(`The account was created, but the setup email could not be sent to ${email}. Check SMTP settings and try again.`);
+  }
+
+  return user;
 }
+
+export async function setInitialPassword(token: string, password: string) {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const pendingUser = await prisma.user.findFirst({
+    where: {
+      setupTokenHash: tokenHash,
+      setupTokenExpiresAt: { gt: new Date() },
+    },
+    select: { id: true },
+  });
+
+  if (!pendingUser) {
+    throw new Error("This password setup link is invalid or has expired. Ask your administrator to create a new invitation.");
+  }
+
+  const passwordHash = await hashPassword(password);
+  const result = await prisma.user.updateMany({
+    where: {
+      id: pendingUser.id,
+      setupTokenHash: tokenHash,
+      setupTokenExpiresAt: { gt: new Date() },
+    },
+    data: {
+      passwordHash,
+      setupTokenHash: null,
+      setupTokenExpiresAt: null,
+    },
+  });
+
+  if (result.count !== 1) {
+    throw new Error("This password setup link is invalid or has expired. Ask your administrator to create a new invitation.");
+  }
+}
+
+
+/**
+ * Resend the initial password setup invitation.
+ * Only accounts that have not completed setup can receive a new invitation.
+ */
+export async function resendSetupInvitation(id: string) {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      email: true,
+      setupTokenHash: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (!user.setupTokenHash) {
+    throw new Error(
+      "This user has already completed password setup",
+    );
+  }
+
+  const setupToken = randomBytes(32).toString("base64url");
+  const setupTokenHash = createHash("sha256")
+    .update(setupToken)
+    .digest("hex");
+  const setupTokenExpiresAt = new Date(
+    Date.now() + 24 * 60 * 60 * 1000,
+  );
+
+  await prisma.user.updateMany({
+    where: {
+      id: user.id,
+      setupTokenHash: user.setupTokenHash,
+    },
+    data: {
+      setupTokenHash,
+      setupTokenExpiresAt,
+    },
+  });
+
+  await sendAccountSetupEmail(user.email, setupToken);
+
+  return {
+    message: "Account setup invitation sent successfully",
+  };
+}
+
 
 /**
  * Update user.

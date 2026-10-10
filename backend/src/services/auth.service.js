@@ -52,6 +52,14 @@ export async function loginUser(email, password) {
     if (user.status !== "ACTIVE") {
         throw new Error("Your account is not active");
     }
+
+  // User must complete initial password setup before signing in
+  if (user.setupTokenHash) {
+    throw new Error(
+      "Please use your account setup link to set your password before signing in"
+    );
+  }
+
     // Check password
     const passwordValid = await comparePassword(password, user.passwordHash);
     if (!passwordValid) {

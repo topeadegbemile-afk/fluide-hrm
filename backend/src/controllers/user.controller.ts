@@ -9,16 +9,18 @@ import {
   getUserById,
   getUsers,
   reactivateUser,
+  resendSetupInvitation,
   updateUser,
 } from "../services/user.service.js";
 
 export async function create(req: Request, res: Response): Promise<void> {
   try {
     const user = await createUser(req.body);
-    res.status(201).json({ success: true, message: "User created successfully", data: user });
+    res.status(201).json({ success: true, message: "User created and setup email sent", data: user });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create user";
-    res.status(400).json({ success: false, message, error: "USER_CREATE_FAILED" });
+    const emailFailure = message.includes("setup email could not be sent");
+    res.status(emailFailure ? 502 : 400).json({ success: false, message, error: emailFailure ? "INVITATION_EMAIL_FAILED" : "USER_CREATE_FAILED" });
   }
 }
 
@@ -123,5 +125,41 @@ export async function reactivate(req: Request, res: Response): Promise<void> {
     res.status(statusCode).json({ success: false, message, error: "USER_REACTIVATE_FAILED" });
   }
 }
+
+
+export async function resendSetupInvitationController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const result = await resendSetupInvitation(
+      req.params.id as string,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to resend setup invitation";
+
+    const statusCode =
+      message === "User not found"
+        ? 404
+        : message === "This user has already completed password setup"
+          ? 400
+          : 502;
+
+    res.status(statusCode).json({
+      success: false,
+      message,
+      error: "SETUP_INVITATION_FAILED",
+    });
+  }
+}
+
 
 

@@ -310,31 +310,21 @@ function UserFormDialog({
                 PASSWORD
             ====================================================== */}
 
-            <label className="employee-form-full">
-              {user
-                ? 'New password'
-                : 'Temporary password'}
-
-              <span className="field-optional">
-                {user
-                  ? 'Leave blank to keep unchanged'
-                  : 'At least 8 characters'}
-              </span>
-
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={form.password}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                required={!user}
-                minLength={8}
-              />
-            </label>
+            {user ? (
+              <label className="employee-form-full">
+                New password
+                <span className="field-optional">Leave blank to keep unchanged</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={form.password}
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                  minLength={8}
+                />
+              </label>
+            ) : (
+              <p className="employee-form-full field-optional">The user will receive an email with a secure link to set their password.</p>
+            )}
 
             {/* =====================================================
                 ACCOUNT STATUS
@@ -873,7 +863,6 @@ export function UsersPage() {
         '/users',
         {
           email: form.email.trim(),
-          password: form.password,
           status: form.status,
 
           employeeId:
@@ -886,7 +875,7 @@ export function UsersPage() {
       )
 
       setNotice(
-        `${form.email.trim()} was created and linked successfully.`,
+        `Invitation email sent to ${form.email.trim()}.`,
       )
     }
 
