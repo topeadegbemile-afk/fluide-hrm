@@ -1,0 +1,53 @@
+
+name: Test cPanel SSH Connection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH tools
+        run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+      - name: Test read-only SSH connection
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_HOST_FINGERPRINT: ${{ vars.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -eu
+          test -n "$SSH_HOST"
+          test -n "$SSH_PORT"
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_USERNAME"
+          test -n "$SSH_HOST_FINGERPRINT"
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" \
+            > "$HOME/.ssh/known_hosts" 2>/dev/null
+
+          ACTUAL_FINGERPRINT="$(
+            ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 |
+            awk 'NR == 1 {print $2}'
+          )"
+          test "$ACTUAL_FINGERPRINT" = "$SSH_HOST_FINGERPRINT"
+
+          ssh -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -i "$HOME/.ssh/deploy_key" \
+            -p "$SSH_PORT" \
+            "$SSH_USERNAME@$SSH_HOST" \
+            'whoami; pwd'
