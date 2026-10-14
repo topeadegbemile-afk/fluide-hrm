@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { prisma } from "../config/database.js";
 
 const photoDirectory = resolve(process.env.PROFILE_PHOTO_DIR ?? "uploads/profile-photos");
-const maxPhotoBytes = 1024 * 1024;
+const maxPhotoBytes = 500 * 1024;
 
 function isValidImage(bytes: Buffer, mimeType: string) {
   if (mimeType === "image/jpeg") return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
@@ -14,7 +14,7 @@ function isValidImage(bytes: Buffer, mimeType: string) {
 }
 
 export async function saveProfilePhoto(employeeId: string, bytes: Buffer, mimeType: string) {
-  if (!bytes.length || bytes.length > maxPhotoBytes) throw new Error("Profile photos must be 1 MB or smaller.");
+  if (!bytes.length || bytes.length > maxPhotoBytes) throw new Error("Profile photos must be 500 KB or smaller.");
   if (!isValidImage(bytes, mimeType)) throw new Error("Choose a valid PNG, JPG, or WebP image.");
   const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
   if (!employee) throw new Error("Employee not found");

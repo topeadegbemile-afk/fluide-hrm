@@ -10,6 +10,8 @@ import type {
 export async function createEmployee(
   data: CreateEmployeeInput
 ) {
+  const office = await prisma.office.findFirst({ where: { id: data.officeId, isActive: true } });
+  if (!office) throw new Error("A valid active office assignment is required");
   const existingEmployeeNumber =
     await prisma.employee.findUnique({
       where: {
@@ -23,12 +25,11 @@ export async function createEmployee(
     );
   }
 
-  const existingEmail =
-    await prisma.employee.findUnique({
+  const existingEmail = data.email ? await prisma.employee.findUnique({
       where: {
         email: data.email,
       },
-    });
+    }) : null;
 
   if (existingEmail) {
     throw new Error(
@@ -117,7 +118,7 @@ export async function createEmployee(
         middleName:
           data.middleName,
 
-        email: data.email,
+        email: data.email || null,
 
         phone: data.phone,
 
@@ -141,10 +142,16 @@ export async function createEmployee(
         dateJoined:
           new Date(data.dateJoined),
 
+        employmentMonthYear: data.employmentMonthYear,
+
         confirmationDate:
           data.confirmationDate
             ? new Date(data.confirmationDate)
             : undefined,
+
+        grossSalary: data.grossSalary,
+        lastSalary: data.lastSalary,
+        reviewDate: data.reviewDate ? new Date(data.reviewDate) : undefined,
 
         departmentId:
           data.departmentId,
@@ -154,11 +161,13 @@ export async function createEmployee(
 
         managerId:
           data.managerId,
+        officeId: data.officeId,
       },
 
       include: {
         department: true,
         position: true,
+        office: true,
         manager: {
           select: {
             id: true,
@@ -191,6 +200,8 @@ export async function getEmployees() {
     include: {
       department: true,
       position: true,
+      office: true,
+      personalInformation: true,
 
       manager: {
         select: {
@@ -220,6 +231,7 @@ export async function getEmployeeById(
       include: {
         department: true,
         position: true,
+        office: true,
         manager: {
           select: {
             id: true,
@@ -278,6 +290,11 @@ export async function updateEmployee(
     throw new Error(
       "Employee not found"
     );
+  }
+
+  if (data.officeId) {
+    const office = await prisma.office.findFirst({ where: { id: data.officeId, isActive: true } });
+    if (!office) throw new Error("A valid active office assignment is required");
   }
 
   if (
@@ -417,7 +434,7 @@ export async function updateEmployee(
 
         ...(data.email !== undefined
           ? {
-              email: data.email,
+              email: data.email || null,
             }
           : {}),
 
@@ -485,6 +502,8 @@ export async function updateEmployee(
             }
           : {}),
 
+        ...(data.employmentMonthYear !== undefined ? { employmentMonthYear: data.employmentMonthYear } : {}),
+
         ...(data.confirmationDate !==
         undefined
           ? {
@@ -496,6 +515,10 @@ export async function updateEmployee(
                   : null,
             }
           : {}),
+
+        ...(data.grossSalary !== undefined ? { grossSalary: data.grossSalary } : {}),
+        ...(data.lastSalary !== undefined ? { lastSalary: data.lastSalary } : {}),
+        ...(data.reviewDate !== undefined ? { reviewDate: data.reviewDate ? new Date(data.reviewDate) : null } : {}),
 
         ...(data.departmentId !==
         undefined
@@ -519,11 +542,14 @@ export async function updateEmployee(
                 data.managerId,
             }
           : {}),
+
+        ...(data.officeId !== undefined ? { officeId: data.officeId } : {}),
       },
 
       include: {
         department: true,
         position: true,
+        office: true,
 
         manager: {
           select: {

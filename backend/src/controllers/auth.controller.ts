@@ -11,6 +11,22 @@ import { prisma } from "../config/database.js";
 
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 
+const DEVICE_COOKIE = "fluide_device";
+function readDeviceCookie(req: Request) {
+  const cookieHeader = req.headers.cookie ?? "";
+  const match = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${DEVICE_COOKIE}=`));
+  if (!match) return undefined;
+  try { return decodeURIComponent(match.slice(DEVICE_COOKIE.length + 1)); } catch { return undefined; }
+}
+function setDeviceCookie(res: Response, credential: string) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `${DEVICE_COOKIE}=${encodeURIComponent(credential)}; Path=/api/v1/auth; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`);
+}
+function clearDeviceCookie(res: Response) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `${DEVICE_COOKIE}=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax${secure}`);
+}
+
 export async function setPassword(req: Request, res: Response): Promise<void> {
   try {
     await setInitialPassword(req.body.token, req.body.password);
@@ -32,15 +48,14 @@ export async function login(
   try {
     const { email, password } = req.body;
 
-    const result = await loginUser(
-      email,
-      password
-    );
+    const result = await loginUser(email, password, readDeviceCookie(req), { userAgent: req.get("user-agent"), ipAddress: req.ip });
+    setDeviceCookie(res, result.deviceCredential);
+    const { deviceCredential: _deviceCredential, ...publicResult } = result;
 
     res.status(200).json({
       success: true,
       message: "Login successful",
-      data: result,
+      data: publicResult,
     });
   } catch (error) {
     const message =
@@ -48,20 +63,21 @@ export async function login(
         ? error.message
         : "Unable to login";
 
+    if (message === "DEVICE_REVOKED") clearDeviceCookie(res);
+
     const statusCode =
       message === "Invalid email or password"
         ? 401
         : message === "Your account is not active"
           ? 403
-          : 500;
+          : message === "TWO_DEVICE_LIMIT_REACHED" || message === "DEVICE_REVOKED"
+            ? 403
+            : 500;
 
     res.status(statusCode).json({
       success: false,
       message,
-      error:
-        statusCode === 500
-          ? "INTERNAL_SERVER_ERROR"
-          : "AUTHENTICATION_ERROR",
+      error: message === "TWO_DEVICE_LIMIT_REACHED" ? "DEVICE_LIMIT_REACHED" : message === "DEVICE_REVOKED" ? "DEVICE_REVOKED" : statusCode === 500 ? "INTERNAL_SERVER_ERROR" : "AUTHENTICATION_ERROR",
     });
   }
 }
@@ -76,13 +92,14 @@ export async function refresh(
   try {
     const { refreshToken } = req.body;
 
-    const result =
-      await refreshAccessToken(refreshToken);
+    const result = await refreshAccessToken(refreshToken, readDeviceCookie(req), { userAgent: req.get("user-agent"), ipAddress: req.ip });
+    if (result.deviceCredential) setDeviceCookie(res, result.deviceCredential);
+    const { deviceCredential: _deviceCredential, ...publicResult } = result;
 
     res.status(200).json({
       success: true,
       message: "Token refreshed successfully",
-      data: result,
+      data: publicResult,
     });
   } catch (error) {
     const message =
@@ -90,6 +107,7 @@ export async function refresh(
         ? error.message
         : "Unable to refresh token";
 
+    if (message === "DEVICE_REVOKED") clearDeviceCookie(res);
     res.status(401).json({
       success: false,
       message,

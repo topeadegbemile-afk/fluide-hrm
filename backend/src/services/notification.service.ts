@@ -4,14 +4,30 @@ import type { CreateNotificationInput, UpdateNotificationInput } from "../valida
 export async function getNotificationsForUser(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { employee: { select: { id: true } } },
+    select: { email: true, employee: { select: { id: true } } },
   });
+
+  let employee = user?.employee ?? null;
+  if (user && !employee) {
+    const matchingEmployee = await prisma.employee.findFirst({
+      where: { email: user.email, userId: null },
+      select: { id: true },
+    });
+    if (matchingEmployee) {
+      const linked = await prisma.employee.updateMany({
+        where: { id: matchingEmployee.id, userId: null },
+        data: { userId },
+      });
+      if (linked.count === 1) employee = matchingEmployee;
+      else employee = await prisma.employee.findUnique({ where: { userId }, select: { id: true } });
+    }
+  }
 
   return prisma.notification.findMany({
     where: {
       OR: [
         { userId },
-        ...(user?.employee ? [{ employeeId: user.employee.id }] : []),
+        ...(employee ? [{ employeeId: employee.id }] : []),
       ],
     },
     orderBy: { createdAt: "desc" },
@@ -36,6 +52,24 @@ export async function createNotification(data: CreateNotificationInput) {
       metadata: data.metadata ?? undefined,
     },
   });
+}
+
+export async function createNotificationForAllEmployees(data: CreateNotificationInput) {
+  const employees = await prisma.employee.findMany({
+    where: { userId: { not: null } },
+    select: { id: true },
+  });
+  if (!employees.length) return { count: 0 };
+  const result = await prisma.notification.createMany({
+    data: employees.map(({ id }) => ({
+      employeeId: id,
+      title: data.title,
+      message: data.message,
+      type: data.type ?? "ANNOUNCEMENT",
+      metadata: data.metadata ?? undefined,
+    })),
+  });
+  return { count: result.count };
 }
 
 export async function updateNotification(id: string, data: UpdateNotificationInput) {

@@ -257,7 +257,7 @@ export function ReportsPage() {
     <section className="reports-page" aria-label="Reports">
       <div className="reports-intro">
         <span className="employee-summary-icon"><FileSpreadsheet size={18} aria-hidden="true" /></span>
-        <div><p className="eyebrow">PEOPLE OPERATIONS</p><h2>Workforce reports</h2><p>Review employee records and attendance activity. Export the filtered results to CSV.</p></div>
+        <div><p className="eyebrow">PEOPLE. PERFORMANCE. PROGRESS.</p><h2>Workforce reports</h2><p>Review employee records and attendance activity. Export the filtered results to CSV.</p></div>
       </div>
 
       <div className="reports-tabs" role="tablist" aria-label="Report type">

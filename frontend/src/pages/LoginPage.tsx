@@ -24,7 +24,8 @@ export function LoginPage() {
     setIsSubmitting(true)
     try {
       await login(email.trim(), password)
-      const destination = (location.state as { from?: string } | null)?.from ?? '/'
+      const destination = (location.state as { from?: string } | null)?.from
+        ?? `${location.pathname}${location.search}`
       navigate(destination, { replace: true })
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to sign in. Please try again.')
@@ -37,7 +38,7 @@ export function LoginPage() {
     <main className="login-page">
       <section className="login-panel" aria-labelledby="login-heading">
         <img className="login-logo" src={logoSrc} alt="Fluidé Homes" />
-        <p className="eyebrow">PEOPLE OPERATIONS</p>
+        <p className="eyebrow">People. Appraisals. Progress.</p>
         <h1 id="login-heading">Welcome back</h1>
         <p className="login-intro">Sign in to your Fluidé Homes workspace.</p>
 
@@ -90,7 +91,7 @@ export function LoginPage() {
         </form>
         <p className="login-footnote">Access is managed by your HR administrator.</p>
       </section>
-      <footer className="login-footer">FLUIDÉ HOMES <span>·</span> PEOPLE OPERATIONS</footer>
+      <footer className="login-footer">FLUIDÉ HOMES <span>·</span> People. Appraisals. Progress.</footer>
     </main>
   )
 }

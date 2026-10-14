@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertCircle,
   Check,
@@ -11,12 +11,23 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { useTheme } from '../theme/useTheme'
+import { ApiError, api } from '../lib/api'
 
 export function SettingsPage() {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
   const navigate = useNavigate()
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [devices, setDevices] = useState<Array<{ id: string; label: string | null; lastUsedAt: string }>>([])
+  const [replacementDeviceId, setReplacementDeviceId] = useState('')
+  const [replacementReason, setReplacementReason] = useState('')
+  const [deviceNotice, setDeviceNotice] = useState('')
+  const [deviceError, setDeviceError] = useState('')
+  const [requestingReplacement, setRequestingReplacement] = useState(false)
+
+  useEffect(() => {
+    api.get<typeof devices>('/security/my-devices').then(setDevices).catch(() => setDevices([]))
+  }, [])
 
   async function signOut() {
     setIsSigningOut(true)
@@ -29,6 +40,17 @@ export function SettingsPage() {
         state: { notice: 'You were signed out on this device, but the server could not confirm session revocation.' },
       })
     }
+  }
+
+  async function requestReplacement() {
+    if (!replacementDeviceId || replacementReason.trim().length < 5) return
+    setRequestingReplacement(true); setDeviceError(''); setDeviceNotice('')
+    try {
+      await api.post('/security/replacement-requests', { deviceId: replacementDeviceId, reason: replacementReason.trim() })
+      setDeviceNotice('Request sent to a super admin. The selected device remains active until approval.')
+      setReplacementReason('')
+    } catch (cause) { setDeviceError(cause instanceof ApiError ? cause.message : 'Unable to submit device replacement request.') }
+    finally { setRequestingReplacement(false) }
   }
 
   if (!user) {
@@ -86,6 +108,17 @@ export function SettingsPage() {
       <section className="settings-section settings-signout" aria-labelledby="session-title">
         <div className="settings-section-heading"><div><p className="eyebrow">SESSION</p><h3 id="session-title">Sign out</h3><p>End your current session on this browser.</p></div><LogOut size={17} aria-hidden="true" /></div>
         <button className="button-secondary" type="button" onClick={() => void signOut()} disabled={isSigningOut}><LogOut size={15} />{isSigningOut ? 'Signing out…' : 'Sign out of this account'}</button>
+      </section>
+      <section className="settings-section" aria-labelledby="device-replacement-title">
+        <div className="settings-section-heading"><div><p className="eyebrow">DEVICE SECURITY</p><h3 id="device-replacement-title">Registered devices</h3><p>Each account can have up to two active devices. Ask a super admin to approve a replacement if you need to change devices.</p></div><Shield size={17} aria-hidden="true" /></div>
+        {deviceError && <p className="employee-form-error" role="alert"><AlertCircle size={15} />{deviceError}</p>}
+        {deviceNotice && <p className="employee-inline-warning" role="status"><Check size={15} />{deviceNotice}</p>}
+        {devices.length ? <>
+          <div className="security-record-list">{devices.map((device) => <article key={device.id}><div><strong>{device.label || 'Registered browser'}</strong><span>Last used {new Date(device.lastUsedAt).toLocaleString()}</span></div></article>)}</div>
+          <label>Device to replace<select value={replacementDeviceId} onChange={(event) => setReplacementDeviceId(event.target.value)}><option value="">Select a registered device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.label || 'Registered browser'} · {new Date(device.lastUsedAt).toLocaleDateString()}</option>)}</select></label>
+          <label>Reason for replacement<textarea rows={2} maxLength={500} value={replacementReason} onChange={(event) => setReplacementReason(event.target.value)} placeholder="For example, this device was lost or replaced" /></label>
+          <button className="button-secondary" type="button" disabled={requestingReplacement || !replacementDeviceId || replacementReason.trim().length < 5} onClick={() => void requestReplacement()}>{requestingReplacement ? 'Sending request…' : 'Request device replacement'}</button>
+        </> : <p className="admin-muted">No active device registrations were returned. Sign in again to register this browser.</p>}
       </section>
       <p className="settings-readonly-note"><AlertCircle size={14} />Account information and permissions are read-only here. Contact an administrator to change account details or access.</p>
     </section>

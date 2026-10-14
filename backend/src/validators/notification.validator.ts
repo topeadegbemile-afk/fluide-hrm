@@ -7,6 +7,7 @@ export const createNotificationSchema = z.object({
   message: z.string().trim().min(2, "Message is required").max(2000, "Message is too long"),
   type: z.enum(["INFO", "SUCCESS", "WARNING", "ERROR", "ANNOUNCEMENT"]).default("INFO"),
   metadata: z.record(z.string(), z.any()).optional().nullable(),
+  allEmployees: z.boolean().optional(),
 });
 
 export const updateNotificationSchema = z.object({

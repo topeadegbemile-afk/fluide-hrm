@@ -1,5 +1,13 @@
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { authorizeAttendanceNetwork } from "../services/security.service.js";
+import { recordSecurityEvent } from "../services/security.service.js";
+
+function logAttendanceOutcome(req: AuthenticatedRequest, eventType: string, outcome: string, reason?: string) {
+  if (!req.user) return;
+  void recordSecurityEvent({ userId: req.user.id, eventType, outcome, reason, ipAddress: req.ip })
+    .catch((error: unknown) => console.error("Failed to record attendance security event", error));
+}
 import {
   clockInAttendance,
   clockOutAttendance,
@@ -21,7 +29,9 @@ export async function clockIn(req: AuthenticatedRequest, res: Response): Promise
       return;
     }
 
+    await authorizeAttendanceNetwork(req.user.id, req.ip);
     const attendance = await clockInAttendance(req.user.id, req.body);
+    logAttendanceOutcome(req, "ATTENDANCE_CLOCK_IN", "SUCCESS");
 
     res.status(201).json({
       success: true,
@@ -30,10 +40,13 @@ export async function clockIn(req: AuthenticatedRequest, res: Response): Promise
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to clock in";
+    logAttendanceOutcome(req, "ATTENDANCE_CLOCK_IN", "REJECTED", message);
     const statusCode =
       message === "Employee profile is required for attendance access"
         ? 403
-        : message === "You have already clocked in for today"
+        : message.startsWith("Attendance is only available")
+          ? 403
+          : message === "You have already clocked in for today"
           ? 409
           : 500;
 
@@ -56,7 +69,9 @@ export async function clockOut(req: AuthenticatedRequest, res: Response): Promis
       return;
     }
 
+    await authorizeAttendanceNetwork(req.user.id, req.ip);
     const attendance = await clockOutAttendance(req.user.id, req.body);
+    logAttendanceOutcome(req, "ATTENDANCE_CLOCK_OUT", "SUCCESS");
 
     res.status(200).json({
       success: true,
@@ -65,10 +80,13 @@ export async function clockOut(req: AuthenticatedRequest, res: Response): Promis
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to clock out";
+    logAttendanceOutcome(req, "ATTENDANCE_CLOCK_OUT", "REJECTED", message);
     const statusCode =
       message === "Employee profile is required for attendance access"
         ? 403
-        : message === "You must clock in before clocking out"
+        : message.startsWith("Attendance is only available")
+          ? 403
+          : message === "You must clock in before clocking out"
           ? 409
           : message === "You have already clocked out for today"
             ? 409
@@ -217,7 +235,9 @@ export async function update(req: AuthenticatedRequest, res: Response): Promise<
       return;
     }
 
+    await authorizeAttendanceNetwork(req.user.id, req.ip);
     const attendance = await updateAttendance(req.user.id, req.params.id as string, req.body);
+    logAttendanceOutcome(req, "ATTENDANCE_ADMIN_UPDATE", "SUCCESS");
 
     res.status(200).json({
       success: true,
@@ -226,10 +246,11 @@ export async function update(req: AuthenticatedRequest, res: Response): Promise<
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update attendance";
+    logAttendanceOutcome(req, "ATTENDANCE_ADMIN_UPDATE", "REJECTED", message);
     const statusCode =
       message === "Attendance record not found"
         ? 404
-        : message === "You do not have permission to update this attendance record"
+        : message.startsWith("Attendance is only available") || message === "You do not have permission to update this attendance record"
           ? 403
           : 500;
 

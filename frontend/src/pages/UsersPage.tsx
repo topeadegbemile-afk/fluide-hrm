@@ -841,6 +841,9 @@ export function UsersPage() {
       const payload = {
         email: form.email.trim(),
         status: form.status,
+        ...(canReadRoles && {
+          roleIds: form.roleIds,
+        }),
         ...(form.password && {
           password: form.password,
         }),

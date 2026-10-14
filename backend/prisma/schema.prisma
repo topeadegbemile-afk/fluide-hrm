@@ -28,6 +28,7 @@ enum EmploymentType {
   CONTRACT
   INTERN
   TEMPORARY
+  HYBRID
 }
 
 enum AttendanceStatus {
@@ -49,6 +50,9 @@ model User {
   employee      Employee?
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
+  devices      SecurityDevice[]
+  configuredOffices Office[] @relation("OfficeNetworkConfigurator")
+  replacementRequests DeviceReplacementRequest[]
   notifications Notification[]
   auditLogs     AuditLog[]
 
@@ -150,9 +154,11 @@ model Employee {
   lastName   String
   middleName String?
 
-  email       String    @unique
+  email       String?   @unique
   phone       String?
   dateOfBirth DateTime?
+  birthdayNotificationYear Int?
+  workAnniversaryNotificationYear Int?
 
   gender  String?
   address String?
@@ -163,7 +169,11 @@ model Employee {
   employmentStatus EmployeeStatus @default(PROBATION)
 
   dateJoined       DateTime
+  employmentMonthYear String?
   confirmationDate DateTime?
+  grossSalary Decimal? @db.Decimal(14, 2)
+  lastSalary Decimal? @db.Decimal(14, 2)
+  reviewDate DateTime?
 
   userId String? @unique
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -174,6 +184,9 @@ model Employee {
   positionId String?
   position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
 
+  officeId String?
+  office Office? @relation(fields: [officeId], references: [id], onDelete: SetNull)
+
   managerId String?
   manager   Employee? @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
 
@@ -183,6 +196,9 @@ model Employee {
   assignedDepartmentTasks DepartmentTask[] @relation("DepartmentTaskAssignee")
   createdDepartmentTasks DepartmentTask[] @relation("DepartmentTaskCreator")
   personalInformation EmployeePersonalInformation?
+  payrollConfiguration PayrollConfiguration?
+  monthlyPayrollDeductions MonthlyPayrollDeduction[]
+  payrollPayslips PayrollPayslip[]
 
   attendance                   Attendance[]
   handbookArticles            HandbookArticle[]          @relation("HandbookArticleAuthor")
@@ -192,6 +208,8 @@ model Employee {
   performanceReviews           PerformanceReview[]
   reviewedPerformanceReviews   PerformanceReview[]        @relation("PerformanceReviewReviewer")
   createdCelebrations          Celebration[]
+  birthdayWishesSent           BirthdayWish[] @relation("BirthdayWishSender")
+  birthdayWishesReceived       BirthdayWish[] @relation("BirthdayWishRecipient")
   notifications               Notification[]
   performedAuditLogs          AuditLog[]                 @relation("AuditLogActor")
 
@@ -204,6 +222,74 @@ model Employee {
   @@index([positionId])
   @@index([managerId])
   @@index([employmentStatus])
+  @@index([officeId])
+}
+
+model Office {
+  id String @id @default(uuid())
+  name String
+  code String @unique
+  address String
+  isActive Boolean @default(true)
+  approvedNetworks String[] @default([])
+  networkConfiguredAt DateTime?
+  configuredById String?
+  configuredBy User? @relation("OfficeNetworkConfigurator", fields: [configuredById], references: [id], onDelete: SetNull)
+  employees Employee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([isActive])
+}
+
+model SecuritySettings {
+  id String @id @default("global")
+  attendanceOfficeEnforcement Boolean @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityDevice {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialHash String @unique
+  label String?
+  userAgent String?
+  lastIpAddress String?
+  lastUsedAt DateTime @default(now())
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  refreshTokens RefreshToken[]
+  replacementRequests DeviceReplacementRequest[] @relation("ReplacementTargetDevice")
+  @@index([userId, revokedAt])
+}
+
+model DeviceReplacementRequest {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String
+  device SecurityDevice @relation("ReplacementTargetDevice", fields: [deviceId], references: [id], onDelete: Cascade)
+  reason String
+  status String @default("PENDING")
+  reviewedByUserId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+model SecurityEvent {
+  id String @id @default(uuid())
+  userId String?
+  userEmail String?
+  eventType String
+  outcome String
+  reason String?
+  ipAddress String?
+  details Json?
+  createdAt DateTime @default(now())
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
 }
 
 model DepartmentMessage {
@@ -248,9 +334,85 @@ model EmployeePersonalInformation {
   employeeId String   @unique
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   data       Json
+  proposedData Json?
+  reviewBaseData Json?
+  reviewStatus String  @default("PENDING")
+  reviewComment String?
+  reviewedAt DateTime?
+  submittedAt DateTime @default(now())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+}
+
+model PayrollConfiguration {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  basicSalary Decimal @db.Decimal(14, 2)
+  benefits   Json     @default("[]")
+  customAdditions Json @default("[]")
+  deductions Json     @default("[]")
+  currency   String   @default("NGN")
+  isEnabled  Boolean  @default(true)
+  updatedById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isEnabled])
+}
+
+model PayrollCurrencyOption {
+  code      String   @id
+  createdAt DateTime @default(now())
+}
+
+model MonthlyPayrollDeduction {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period     String
+  deductions Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, period])
+  @@index([period])
+}
+
+model PayrollStandardComponent {
+  id String @id @default(uuid())
+  name String @unique
+  percentage Decimal @db.Decimal(5, 2)
+  sortOrder Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model PayrollPayslip {
+  id             String    @id @default(uuid())
+  employeeId     String?
+  employee       Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeName   String
+  employeeNumber String
+  recipientEmail String
+  recipientEmails String[] @default([])
+  period         String
+  currency       String    @default("NGN")
+  basicSalary    Decimal   @db.Decimal(14, 2)
+  benefits       Json
+  grossPay       Decimal   @db.Decimal(14, 2)
+  deductions     Json
+  totalDeductions Decimal  @db.Decimal(14, 2)
+  netPay         Decimal   @db.Decimal(14, 2)
+  emailedAt      DateTime?
+  emailSendingAt DateTime?
+  emailError     String?
+  emailAttempts  Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  @@unique([employeeId, period])
+  @@index([period])
+  @@index([recipientEmail])
 }
 
 model Attendance {
@@ -373,6 +535,20 @@ model Celebration {
   @@index([type])
   @@index([isPublished])
   @@index([eventDate])
+}
+
+model BirthdayWish {
+  id          String   @id @default(uuid())
+  senderId    String
+  sender      Employee @relation("BirthdayWishSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   Employee @relation("BirthdayWishRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  celebrationType CelebrationType @default(BIRTHDAY)
+  message     String
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+  @@index([senderId])
 }
 
 model HandbookArticle {
@@ -552,6 +728,8 @@ model RefreshToken {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String?
+  device SecurityDevice? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   expiresAt DateTime
   revokedAt DateTime?

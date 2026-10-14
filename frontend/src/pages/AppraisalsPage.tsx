@@ -10,6 +10,7 @@ import {
   RotateCw,
   Search,
   Star,
+  Trash2,
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/useAuth'
@@ -249,7 +250,7 @@ function ReviewDialog({
     try {
       await onSave({ cycleId, employeeId, fields, status, isManagerReview: managerMode })
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Unable to save this performance review.')
+      setError(cause instanceof ApiError ? cause.message : 'Unable to save this appraisal.')
     } finally {
       setSaving(false)
     }
@@ -264,7 +265,7 @@ function ReviewDialog({
     <div className="employee-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section className="employee-dialog appraisal-dialog" role="dialog" aria-modal="true" aria-labelledby="review-form-title">
         <header className="employee-dialog-header">
-          <div><p className="eyebrow">{managerMode ? 'MANAGER REVIEW' : 'PERFORMANCE REVIEW'}</p><h2 id="review-form-title">{review ? (managerMode ? 'Review performance' : 'Edit self-assessment') : 'Start a review'}</h2></div>
+          <div><p className="eyebrow">{managerMode ? 'MANAGER REVIEW' : 'APPRAISAL'}</p><h2 id="review-form-title">{review ? (managerMode ? 'Review appraisal' : 'Edit self-assessment') : 'Start a review'}</h2></div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close review form"><X size={19} /></button>
         </header>
         <form className="employee-form" onSubmit={(event) => submit(event)}>
@@ -373,8 +374,8 @@ export function AppraisalsPage() {
   const [notice, setNotice] = useState('')
   const [loadWarning, setLoadWarning] = useState('')
   const canRead = hasPermission('appraisal:read')
-  const canUpdate = hasPermission('appraisal:update')
   const canReview = hasPermission('appraisal:review')
+  const isSuperAdmin = user?.roles.includes('SUPER_ADMIN') ?? false
   const isCycleManager = user?.roles.some((role) => ['SUPER_ADMIN', 'HR', 'MANAGER'].includes(role)) ?? false
 
   useEffect(() => {
@@ -398,7 +399,7 @@ export function AppraisalsPage() {
       } else {
         const cause: unknown = reviewResult.reason
         setReviews([])
-        setError(cause instanceof ApiError ? cause.message : 'Unable to load performance reviews.')
+        setError(cause instanceof ApiError ? cause.message : 'Unable to load appraisals.')
       }
       if (employeeResult.status === 'fulfilled') {
         setEmployees(employeeResult.value.map(({ id, employeeNumber, firstName, lastName, email }) => ({ id, employeeNumber, firstName, lastName, email })))
@@ -485,14 +486,21 @@ export function AppraisalsPage() {
       return existing ? current.map((review) => review.id === saved.id ? saved : review) : [saved, ...current]
     })
     setReviewDialog(undefined)
-    setNotice(`Performance review ${data.status === 'SUBMITTED' ? 'submitted' : 'saved'}.`)
+    setNotice(`Appraisal ${data.status === 'SUBMITTED' ? 'submitted' : 'saved'}.`)
+  }
+
+  async function deleteReview(review: Review) {
+    if (!window.confirm(`Delete the appraisal for ${review.employee.firstName} ${review.employee.lastName}? This cannot be undone.`)) return
+    await api.delete(`/appraisals/reviews/${review.id}`)
+    setReviews((current) => current.filter((item) => item.id !== review.id))
+    setNotice('Appraisal deleted.')
   }
 
   if (!canRead) {
     return (
       <section className="module-placeholder access-denied" role="alert">
         <div className="placeholder-icon"><AlertCircle size={21} aria-hidden="true" /></div>
-        <div><h2>Access restricted</h2><p>Your account does not have permission to view performance reviews.</p></div>
+        <div><h2>Access restricted</h2><p>Your account does not have permission to view appraisals.</p></div>
       </section>
     )
   }
@@ -500,7 +508,7 @@ export function AppraisalsPage() {
   const pendingCount = reviews.filter((review) => ['SUBMITTED', 'IN_REVIEW'].includes(review.status)).length
 
   return (
-    <section className="appraisals-page" aria-label="Performance reviews">
+    <section className="appraisals-page" aria-label="Appraisals">
       <div className="appraisal-overview">
         <div className="appraisal-cycle-card">
           <span className="employee-summary-icon"><ClipboardList size={17} /></span>
@@ -513,10 +521,10 @@ export function AppraisalsPage() {
       {notice && <div className="employee-notice" role="status"><Check size={15} /><span>{notice}</span><button type="button" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={15} /></button></div>}
 
       <div className="appraisal-heading-row">
-        <div><h2>Performance reviews</h2><p>Self-assessments, manager feedback, and development goals.</p></div>
+        <div><h2>Appraisals</h2><p>Self-assessments, manager feedback, and development goals.</p></div>
         <div className="appraisal-heading-actions">
           {isCycleManager && <button className="button-secondary" type="button" onClick={() => setShowCycleDialog(true)}><CalendarDays size={15} /> New cycle</button>}
-          {(canUpdate || canReview) && <button className="button-primary" type="button" onClick={() => setReviewDialog(null)}><CirclePlus size={16} /> Start review</button>}
+          {isSuperAdmin && <button className="button-primary" type="button" onClick={() => setReviewDialog(null)}><CirclePlus size={16} /> Start review</button>}
         </div>
       </div>
 
@@ -536,15 +544,15 @@ export function AppraisalsPage() {
             {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
-        <button className="icon-button employee-refresh" type="button" onClick={() => { setIsLoading(true); setReloadKey((key) => key + 1) }} disabled={isLoading} aria-label="Refresh performance reviews">
+        <button className="icon-button employee-refresh" type="button" onClick={() => { setIsLoading(true); setReloadKey((key) => key + 1) }} disabled={isLoading} aria-label="Refresh appraisals">
           {isLoading ? <LoaderCircle className="loading-icon" size={17} /> : <RotateCw size={16} />}
         </button>
       </div>
 
       {error ? (
-        <div className="employees-state employees-error" role="alert"><AlertCircle size={20} /><div><h2>Performance reviews unavailable</h2><p>{error}</p><button className="text-button" type="button" onClick={() => { setIsLoading(true); setReloadKey((key) => key + 1) }}><RotateCw size={14} /> Try again</button></div></div>
+        <div className="employees-state employees-error" role="alert"><AlertCircle size={20} /><div><h2>Appraisals unavailable</h2><p>{error}</p><button className="text-button" type="button" onClick={() => { setIsLoading(true); setReloadKey((key) => key + 1) }}><RotateCw size={14} /> Try again</button></div></div>
       ) : isLoading ? (
-        <div className="employees-state" role="status"><LoaderCircle className="loading-icon" size={19} />Loading performance reviews…</div>
+        <div className="employees-state" role="status"><LoaderCircle className="loading-icon" size={19} />Loading appraisals…</div>
       ) : filteredReviews.length === 0 ? (
         <div className="employees-state empty-directory"><ClipboardList size={22} /><h2>{reviews.length ? 'No matching reviews' : 'No reviews yet'}</h2><p>{reviews.length ? 'Adjust your search or filters.' : 'Reviews created for an appraisal cycle will appear here.'}</p>{reviews.length > 0 && <button className="text-button" type="button" onClick={() => { setSearch(''); setFilter('ALL'); setSelectedCycle('ALL') }}>Clear filters</button>}</div>
       ) : (
@@ -553,8 +561,7 @@ export function AppraisalsPage() {
             <thead><tr><th scope="col">Employee</th><th scope="col">Cycle</th><th scope="col">Status</th><th scope="col">Rating</th><th scope="col">Updated</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
             <tbody>
               {filteredReviews.map((review) => {
-                const isOwn = Boolean(user?.employee && review.employeeId === user.employee.id)
-                const canEdit = (canUpdate && isOwn && review.status === 'DRAFT') || (canReview && ['SUBMITTED', 'IN_REVIEW'].includes(review.status))
+                const canEdit = isSuperAdmin
                 return (
                   <tr key={review.id}>
                     <td><button className="appraisal-employee-link" type="button" onClick={() => setDetailsReview(review)}><span className="employee-primary"><strong>{review.employee.firstName} {review.employee.lastName}</strong><span>{review.employee.employeeNumber}{review.title ? ` · ${review.title}` : ''}</span></span></button></td>
@@ -563,14 +570,17 @@ export function AppraisalsPage() {
                     <td><Rating value={review.overallRating} /></td>
                     <td>{formatDate(review.reviewedAt ?? review.submittedAt ?? review.cycle.startDate)}</td>
                     <td className="appraisal-action-cell">
-                      {canEdit && <button className="icon-button" type="button" onClick={() => setReviewDialog(review)} aria-label={`${canReview ? 'Review' : 'Edit'} ${review.employee.firstName} ${review.employee.lastName}`}><Pencil size={15} /></button>}
+                      {canEdit && <>
+                        <button className="icon-button" type="button" onClick={() => setReviewDialog(review)} aria-label={`Edit ${review.employee.firstName} ${review.employee.lastName}`}><Pencil size={15} /></button>
+                        <button className="icon-button" type="button" onClick={() => void deleteReview(review)} aria-label={`Delete ${review.employee.firstName} ${review.employee.lastName}`}><Trash2 size={15} /></button>
+                      </>}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          <div className="employee-table-footer"><span>Showing {filteredReviews.length} of {reviews.length} reviews</span><span><ClipboardList size={13} /> Performance</span></div>
+          <div className="employee-table-footer"><span>Showing {filteredReviews.length} of {reviews.length} reviews</span><span><ClipboardList size={13} /> Appraisals</span></div>
         </div>
       )}
       {showCycleDialog && <CycleDialog onClose={() => setShowCycleDialog(false)} onSave={saveCycle} />}

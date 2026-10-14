@@ -6,6 +6,7 @@ import positionRoutes from "./routes/position.routes.js";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import ipaddr from "ipaddr.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import attendanceRoutes from "./routes/attendance.routes.js";
@@ -20,9 +21,20 @@ import reportRoutes from "./routes/report.routes.js";
 import auditRoutes from "./routes/audit.routes.js";
 import handbookRoutes from "./routes/handbook.routes.js";
 import collaborationRoutes from "./routes/collaboration.routes.js";
+import securityRoutes from "./routes/security.routes.js";
+import payrollRoutes from "./routes/payroll.routes.js";
 import { auditSuccessfulMutation } from "./middleware/audit.middleware.js";
 
 const app = express();
+
+// Trust only explicitly configured reverse proxies. Do not trust arbitrary X-Forwarded-For headers.
+const trustedProxyRanges = (process.env.TRUSTED_PROXY_IPS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+for (const range of trustedProxyRanges) {
+  const [address, prefix] = range.includes("/") ? ipaddr.parseCIDR(range) : [ipaddr.parse(range), undefined] as const;
+  if (prefix === 0) throw new Error("TRUSTED_PROXY_IPS cannot contain an unrestricted network");
+  if (!["unicast", "private", "uniqueLocal"].includes(address.range())) throw new Error("TRUSTED_PROXY_IPS must contain verified unicast proxy addresses");
+}
+app.set("trust proxy", trustedProxyRanges.length ? trustedProxyRanges : false);
 
 // Security
 app.use(helmet());
@@ -41,7 +53,7 @@ app.use(
   })
 );
 // Request body parsing
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(auditSuccessfulMutation);
 
@@ -74,4 +86,6 @@ app.use("/api/v1/collaboration", collaborationRoutes);
 app.use("/api/v1/employees", employeeRoutes);
 app.use("/api/v1/departments", departmentRoutes);
 app.use("/api/v1/positions", positionRoutes);
+app.use("/api/v1/security", securityRoutes);
+app.use("/api/v1/payroll", payrollRoutes);
 export default app;

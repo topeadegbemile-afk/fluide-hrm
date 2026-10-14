@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createCycle,
   createReview,
+  deleteReview,
   getCycleById,
   getCycles,
   getReviewById,
@@ -29,5 +30,6 @@ router.get("/reviews", authenticate, getReviews);
 router.get("/reviews/:id", authenticate, getReviewById);
 router.patch("/reviews/:id", authenticate, validate(updatePerformanceReviewSchema), updateReview);
 router.patch("/reviews/:id/status", authenticate, validate(updatePerformanceReviewStatusSchema), updateReviewStatus);
+router.delete("/reviews/:id", authenticate, deleteReview);
 
 export default router;

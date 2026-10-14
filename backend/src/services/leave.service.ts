@@ -1,5 +1,5 @@
 import { prisma } from "../config/database.js";
-import type { ApproveLeaveInput, CreateLeaveInput, RejectLeaveInput } from "../validators/leave.validator.js";
+import type { ApproveLeaveInput, CreateLeaveInput, RejectLeaveInput, UpdateLeaveInput } from "../validators/leave.validator.js";
 
 function getEmployeeForUser(userId: string) {
   return prisma.user.findUnique({
@@ -64,7 +64,7 @@ export async function createLeaveRequest(userId: string, data: CreateLeaveInput)
     throw new Error("Leave duration must be at least 1 day");
   }
 
-  return prisma.leave.create({
+  const leave = await prisma.leave.create({
     data: {
       employeeId: user.employee.id,
       leaveType: data.leaveType,
@@ -86,6 +86,29 @@ export async function createLeaveRequest(userId: string, data: CreateLeaveInput)
       },
     },
   });
+  const [manager, approvers] = await Promise.all([
+    prisma.employee.findUnique({ where: { id: user.employee.id }, select: { manager: { select: { userId: true } } } }),
+    prisma.user.findMany({
+      where: { userRoles: { some: { role: { name: { in: ["SUPER_ADMIN", "HR"] } } } } },
+      select: { id: true },
+    }),
+  ]);
+  const recipientIds = [...new Set([
+    ...(manager?.manager?.userId ? [manager.manager.userId] : []),
+    ...approvers.map((approver) => approver.id),
+  ].filter((id) => id !== userId))];
+  if (recipientIds.length) {
+    await prisma.notification.createMany({
+      data: recipientIds.map((recipientId) => ({
+        userId: recipientId,
+        title: "Leave request needs review",
+        message: `${leave.employee.firstName} ${leave.employee.lastName} submitted a ${leave.leaveType.toLowerCase()} leave request.`,
+        type: "INFO" as const,
+        metadata: { destination: "/leaves", requestType: "leave", requestId: leave.id },
+      })),
+    });
+  }
+  return leave;
 }
 
 export async function getLeaveRequests(userId: string) {
@@ -184,6 +207,58 @@ export async function getLeaveById(userId: string, leaveId: string) {
   }
 
   throw new Error("You do not have access to this leave request");
+}
+
+function assertLeaveAdministrator(roles: string[]) {
+  if (!hasRole(roles, "SUPER_ADMIN", "HR")) {
+    throw new Error("You do not have permission to manage leave requests");
+  }
+}
+
+export async function updateLeaveRequest(userId: string, leaveId: string, data: UpdateLeaveInput) {
+  assertLeaveAdministrator(await getUserRoles(userId));
+  const leave = await prisma.leave.findUnique({ where: { id: leaveId } });
+  if (!leave) throw new Error("Leave request not found");
+
+  const startDate = new Date(data.startDate);
+  const endDate = new Date(data.endDate);
+  const days = computeLeaveDays(startDate, endDate);
+  if (days <= 0) throw new Error("Leave duration must be at least 1 day");
+
+  if (leave.status === "PENDING" || leave.status === "APPROVED") {
+    const overlapping = await prisma.leave.findFirst({
+      where: {
+        id: { not: leaveId },
+        employeeId: leave.employeeId,
+        status: { in: ["PENDING", "APPROVED"] },
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+      select: { id: true },
+    });
+    if (overlapping) throw new Error("These dates overlap another pending or approved leave request");
+  }
+
+  return prisma.leave.update({
+    where: { id: leaveId },
+    data: { leaveType: data.leaveType, startDate, endDate, days, reason: data.reason },
+    include: {
+      employee: { select: { id: true, employeeNumber: true, firstName: true, lastName: true, email: true } },
+      approver: { select: { id: true, employeeNumber: true, firstName: true, lastName: true, email: true } },
+    },
+  });
+}
+
+export async function deleteLeaveRequest(userId: string, leaveId: string) {
+  assertLeaveAdministrator(await getUserRoles(userId));
+  const leave = await prisma.leave.findUnique({ where: { id: leaveId }, select: { id: true } });
+  if (!leave) throw new Error("Leave request not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.notification.deleteMany({ where: { metadata: { path: ["requestId"], equals: leaveId } } });
+    await tx.leave.delete({ where: { id: leaveId } });
+  });
+  return { id: leaveId, deleted: true };
 }
 
 export async function approveLeaveRequest(userId: string, leaveId: string, data: ApproveLeaveInput) {

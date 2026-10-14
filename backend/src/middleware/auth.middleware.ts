@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt.js";
+import { prisma } from "../config/database.js";
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -8,11 +9,11 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export function authenticate(
+export async function authenticate(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   try {
     const authorization = req.headers.authorization;
 
@@ -46,6 +47,14 @@ export function authenticate(
     }
 
     const payload = verifyAccessToken(token);
+
+    if (payload.deviceId) {
+      const device = await prisma.securityDevice.findUnique({ where: { id: payload.deviceId }, select: { userId: true, revokedAt: true } });
+      if (!device || device.userId !== payload.userId || device.revokedAt) {
+        res.status(401).json({ success: false, message: "This device session has been revoked", error: "DEVICE_REVOKED" });
+        return;
+      }
+    }
 
     req.user = {
       id: payload.userId,

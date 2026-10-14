@@ -10,6 +10,9 @@ import {
   getMyPersonalInformation,
   updateMyPersonalInformation,
   getEmployeePersonalInformationById,
+  getEmployeePersonalInformationReviewQueue,
+  updateEmployeePersonalInformation,
+  reviewEmployeePersonalInformation,
   getEmployeeProfilePhoto,
   uploadEmployeeProfilePhoto,
 } from "../controllers/employee.controller.js";
@@ -19,6 +22,7 @@ import { authenticate } from "../middleware/auth.middleware.js";
 
 import {
   requirePermission,
+  requireRole,
 } from "../middleware/rbac.middleware.js";
 
 import { validate } from "../middleware/validation.middleware.js";
@@ -28,12 +32,12 @@ import {
   bulkCreateEmployeesSchema,
   updateEmployeeSchema,
 } from "../validators/employee.validator.js";
-import { employeePersonalInformationSchema } from "../validators/employee-personal-information.validator.js";
+import { employeePersonalInformationAdminEditSchema, employeePersonalInformationReviewSchema, employeePersonalInformationSchema } from "../validators/employee-personal-information.validator.js";
 
 const router = Router();
 
 router.get("/:id/profile-photo", authenticate, getEmployeeProfilePhoto);
-router.post("/:id/profile-photo", authenticate, express.raw({ type: "image/*", limit: "1mb" }), uploadEmployeeProfilePhoto);
+router.post("/:id/profile-photo", authenticate, express.raw({ type: "image/*", limit: 500 * 1024 }), uploadEmployeeProfilePhoto);
 router.get("/me/personal-information", authenticate, getMyPersonalInformation);
 router.put(
   "/me/personal-information",
@@ -42,10 +46,30 @@ router.put(
   updateMyPersonalInformation,
 );
 router.get(
+  "/personal-information/reviews",
+  authenticate,
+  requireRole("SUPER_ADMIN", "HR"),
+  getEmployeePersonalInformationReviewQueue,
+);
+router.patch(
+  "/:id/personal-information/review",
+  authenticate,
+  requireRole("SUPER_ADMIN", "HR"),
+  validate(employeePersonalInformationReviewSchema),
+  reviewEmployeePersonalInformation,
+);
+router.get(
   "/:id/personal-information",
   authenticate,
   requirePermission("employee:update"),
   getEmployeePersonalInformationById,
+);
+router.put(
+  "/:id/personal-information",
+  authenticate,
+  requirePermission("employee:update"),
+  validate(employeePersonalInformationAdminEditSchema),
+  updateEmployeePersonalInformation,
 );
 
 /**

@@ -5,7 +5,7 @@ export const createHandbookArticleSchema = z.object({
   slug: z.string().trim().min(2).max(180).optional(),
   summary: z.string().trim().max(500).nullable().optional(),
   category: z.string().trim().min(2).max(80),
-  content: z.string().trim().max(50000).default(""),
+  content: z.string().trim().max(500000).default(""),
   isPublished: z.boolean().default(false),
 });
 
@@ -15,7 +15,7 @@ export const updateHandbookArticleSchema = z
     slug: z.string().trim().min(2).max(180).optional(),
     summary: z.string().trim().max(500).nullable().optional(),
     category: z.string().trim().min(2).max(80).optional(),
-    content: z.string().trim().max(50000).optional(),
+    content: z.string().trim().max(500000).optional(),
     isPublished: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {

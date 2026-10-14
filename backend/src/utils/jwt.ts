@@ -14,10 +14,12 @@ const refreshSecret = getRequiredSecret("JWT_REFRESH_SECRET");
 export interface AccessTokenPayload {
   userId: string;
   email: string;
+  deviceId?: string;
 }
 
 export interface RefreshTokenPayload {
   userId: string;
+  deviceId?: string;
 }
 
 export function generateAccessToken(
@@ -47,7 +49,7 @@ export function verifyAccessToken(
   ) {
     throw new Error("Invalid access token payload");
   }
-  return { userId: payload.userId, email: payload.email };
+  return { userId: payload.userId, email: payload.email, ...(typeof payload.deviceId === "string" ? { deviceId: payload.deviceId } : {}) };
 }
 
 export function verifyRefreshToken(
@@ -57,5 +59,5 @@ export function verifyRefreshToken(
   if (typeof payload !== "object" || typeof payload.userId !== "string") {
     throw new Error("Invalid refresh token payload");
   }
-  return { userId: payload.userId };
+  return { userId: payload.userId, ...(typeof payload.deviceId === "string" ? { deviceId: payload.deviceId } : {}) };
 }

@@ -29,6 +29,8 @@ export const rejectLeaveSchema = z.object({
   rejectionReason: z.string().trim().min(5, "Rejection reason must be at least 5 characters").max(500),
 });
 
+export const updateLeaveSchema = createLeaveSchema;
+
 export const leaveIdSchema = z.object({
   id: z.string().uuid("Invalid leave ID"),
 });
@@ -36,3 +38,4 @@ export const leaveIdSchema = z.object({
 export type CreateLeaveInput = z.infer<typeof createLeaveSchema>;
 export type ApproveLeaveInput = z.infer<typeof approveLeaveSchema>;
 export type RejectLeaveInput = z.infer<typeof rejectLeaveSchema>;
+export type UpdateLeaveInput = z.infer<typeof updateLeaveSchema>;

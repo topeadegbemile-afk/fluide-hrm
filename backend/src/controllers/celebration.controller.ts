@@ -7,6 +7,31 @@ import {
   getCelebrations,
   updateCelebration,
 } from "../services/celebration.service.js";
+import { getUpcomingEmployeeCelebrations, sendBirthdayWish } from "../services/birthday.service.js";
+
+export async function birthdays(_req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    res.status(200).json({ success: true, message: "Upcoming employee celebrations retrieved", data: await getUpcomingEmployeeCelebrations() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to retrieve birthdays";
+    res.status(500).json({ success: false, message, error: "BIRTHDAYS_FETCH_FAILED" });
+  }
+}
+
+export async function wishBirthday(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required", error: "AUTHENTICATION_REQUIRED" });
+      return;
+    }
+    const wish = await sendBirthdayWish(req.user.id, req.params.id as string, req.body.message, req.body.celebrationType);
+    res.status(201).json({ success: true, message: "Celebration wish sent", data: wish });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to send birthday wish";
+    const status = message === "Employee not found" ? 404 : message.includes("profile") || message.includes("cannot send") ? 400 : 500;
+    res.status(status).json({ success: false, message, error: "BIRTHDAY_WISH_FAILED" });
+  }
+}
 
 export async function create(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {

@@ -4,12 +4,44 @@ import {
   approveLeaveRequest,
   cancelLeaveRequest,
   createLeaveRequest,
+  deleteLeaveRequest,
   getLeaveBalance,
   getLeaveById,
   getLeaveHistory,
   getLeaveRequests,
   rejectLeaveRequest,
+  updateLeaveRequest,
 } from "../services/leave.service.js";
+
+export async function update(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required", error: "AUTHENTICATION_REQUIRED" });
+      return;
+    }
+    const leave = await updateLeaveRequest(req.user.id, req.params.id as string, req.body);
+    res.status(200).json({ success: true, message: "Leave request updated successfully", data: leave });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update leave request";
+    const status = message === "Leave request not found" ? 404 : message.includes("permission") ? 403 : message.includes("overlap") ? 409 : 400;
+    res.status(status).json({ success: false, message, error: "LEAVE_UPDATE_FAILED" });
+  }
+}
+
+export async function remove(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required", error: "AUTHENTICATION_REQUIRED" });
+      return;
+    }
+    const result = await deleteLeaveRequest(req.user.id, req.params.id as string);
+    res.status(200).json({ success: true, message: "Leave request deleted successfully", data: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete leave request";
+    const status = message === "Leave request not found" ? 404 : message.includes("permission") ? 403 : 400;
+    res.status(status).json({ success: false, message, error: "LEAVE_DELETE_FAILED" });
+  }
+}
 
 export async function create(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {

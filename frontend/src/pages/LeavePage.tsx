@@ -6,8 +6,10 @@ import {
   CirclePlus,
   Clock3,
   LoaderCircle,
+  Pencil,
   RotateCw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/useAuth'
@@ -84,13 +86,17 @@ function calendarDays(start: string, end: string) {
 }
 
 function LeaveRequestDialog({
+  initialValues = emptyLeaveForm,
+  editing = false,
   onClose,
   onSubmit,
 }: {
+  initialValues?: LeaveFormValues
+  editing?: boolean
   onClose: () => void
   onSubmit: (values: LeaveFormValues) => Promise<void>
 }) {
-  const [form, setForm] = useState(emptyLeaveForm)
+  const [form, setForm] = useState(initialValues)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const days = calendarDays(form.startDate, form.endDate)
@@ -114,7 +120,7 @@ function LeaveRequestDialog({
     }}>
       <section className="employee-dialog leave-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-form-title">
         <header className="employee-dialog-header">
-          <div><p className="eyebrow">TIME AWAY</p><h2 id="leave-form-title">Request leave</h2></div>
+          <div><p className="eyebrow">TIME AWAY</p><h2 id="leave-form-title">{editing ? 'Edit leave request' : 'Request leave'}</h2></div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close request form"><X size={19} /></button>
         </header>
         <form className="employee-form" onSubmit={(event) => void submit(event)}>
@@ -144,7 +150,7 @@ function LeaveRequestDialog({
           <footer className="employee-dialog-actions">
             <button className="button-secondary" type="button" onClick={onClose}>Cancel</button>
             <button className="button-primary" type="submit" disabled={saving || !days || form.reason.trim().length < 5}>
-              {saving ? 'Submitting…' : 'Submit request'}
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Submit request'}
             </button>
           </footer>
         </form>
@@ -226,6 +232,7 @@ export function LeavePage() {
   const [balanceWarning, setBalanceWarning] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [showRequest, setShowRequest] = useState(false)
+  const [editingLeave, setEditingLeave] = useState<LeaveRecord | null>(null)
   const [decision, setDecision] = useState<{ kind: 'approve' | 'reject'; leave: LeaveRecord } | null>(null)
   const [notice, setNotice] = useState('')
   const [actionError, setActionError] = useState('')
@@ -234,6 +241,7 @@ export function LeavePage() {
   const canCreate = hasPermission('leave:create')
   const canApprove = hasPermission('leave:approve')
   const canReject = hasPermission('leave:reject')
+  const canManageRequests = user?.roles.some((role) => role === 'SUPER_ADMIN' || role === 'HR') ?? false
 
   useEffect(() => {
     if (!canRead) return
@@ -274,15 +282,38 @@ export function LeavePage() {
   }, [filter, leaves, search])
 
   async function submitRequest(form: LeaveFormValues) {
-    const created = await api.post<LeaveRecord>('/leaves', {
+    const payload = {
       leaveType: form.leaveType,
       startDate: new Date(`${form.startDate}T00:00:00.000Z`).toISOString(),
       endDate: new Date(`${form.endDate}T00:00:00.000Z`).toISOString(),
       reason: form.reason.trim(),
-    })
-    setLeaves((current) => [created, ...current])
-    setShowRequest(false)
-    setNotice('Your leave request was submitted.')
+    }
+    if (editingLeave) {
+      const updated = await api.patch<LeaveRecord>(`/leaves/${editingLeave.id}`, payload)
+      setLeaves((current) => current.map((leave) => leave.id === updated.id ? updated : leave))
+      setEditingLeave(null)
+      setNotice('Leave request updated.')
+    } else {
+      const created = await api.post<LeaveRecord>('/leaves', payload)
+      setLeaves((current) => [created, ...current])
+      setShowRequest(false)
+      setNotice('Your leave request was submitted.')
+    }
+  }
+
+  async function deleteLeave(leave: LeaveRecord) {
+    if (!window.confirm(`Delete ${leave.employee.firstName} ${leave.employee.lastName}'s ${leaveTypeLabels[leave.leaveType].toLowerCase()} request?`)) return
+    setBusyLeaveId(leave.id)
+    setActionError('')
+    try {
+      await api.delete(`/leaves/${leave.id}`)
+      setLeaves((current) => current.filter((item) => item.id !== leave.id))
+      setNotice('Leave request deleted.')
+    } catch (cause) {
+      setActionError(cause instanceof ApiError ? cause.message : 'Unable to delete this leave request.')
+    } finally {
+      setBusyLeaveId(null)
+    }
   }
 
   async function reviewLeave(comment: string) {
@@ -422,6 +453,10 @@ export function LeavePage() {
                           {isBusy ? 'Cancelling…' : 'Cancel'}
                         </button>
                       )}
+                      {canManageRequests && <>
+                        <button className="leave-action-manage" type="button" onClick={() => setEditingLeave(leave)} disabled={isBusy} aria-label={`Edit ${leave.employee.firstName}'s leave request`} title="Edit request"><Pencil size={14} /> Edit</button>
+                        <button className="leave-action-manage leave-action-delete" type="button" onClick={() => void deleteLeave(leave)} disabled={isBusy} aria-label={`Delete ${leave.employee.firstName}'s leave request`} title="Delete request"><Trash2 size={14} /> Delete</button>
+                      </>}
                     </td>
                   </tr>
                 )
@@ -433,6 +468,7 @@ export function LeavePage() {
       )}
 
       {showRequest && <LeaveRequestDialog onClose={() => setShowRequest(false)} onSubmit={submitRequest} />}
+      {editingLeave && <LeaveRequestDialog editing initialValues={{ leaveType: editingLeave.leaveType, startDate: editingLeave.startDate.slice(0, 10), endDate: editingLeave.endDate.slice(0, 10), reason: editingLeave.reason }} onClose={() => setEditingLeave(null)} onSubmit={submitRequest} />}
       {decision && <LeaveDecisionDialog kind={decision.kind} onClose={() => setDecision(null)} onSubmit={reviewLeave} />}
     </section>
   )

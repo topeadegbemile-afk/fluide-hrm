@@ -108,6 +108,11 @@ export function requirePermission(
         },
       });
 
+      if (userRoles.some((userRole) => userRole.role.name === "SUPER_ADMIN")) {
+        next();
+        return;
+      }
+
       const permissions = [
         ...new Set(
           userRoles.flatMap((userRole) =>

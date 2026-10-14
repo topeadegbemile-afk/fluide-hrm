@@ -2,6 +2,7 @@ import type { Response } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import {
   createNotification,
+  createNotificationForAllEmployees,
   deleteNotification,
   getNotificationsForUser,
   updateNotificationForUser,
@@ -29,10 +30,9 @@ export async function create(req: AuthenticatedRequest, res: Response): Promise<
       return;
     }
 
-    const notification = await createNotification({
-      ...req.body,
-      userId: req.body.userId ?? req.user.id,
-    });
+    const notification = req.body.allEmployees
+      ? await createNotificationForAllEmployees(req.body)
+      : await createNotification({ ...req.body, userId: req.body.userId ?? req.user.id });
 
     res.status(201).json({ success: true, message: "Notification created successfully", data: notification });
   } catch (error) {

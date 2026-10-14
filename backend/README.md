@@ -40,3 +40,14 @@ Example create request:
   "isPublished": false
 }
 ```
+# Office attendance and device security rollout
+
+The migration `20261011090000_office_device_security` creates the Abuja (ABJ) and Lagos (LOS) offices with empty approved-network lists and creates attendance enforcement disabled. Existing employees keep a nullable office assignment until an administrator assigns each employee. New employee records require an active office.
+
+Before enabling enforcement, a Super Admin must enter IPv4/IPv6 addresses or CIDR ranges verified by the office network administrators for every active office. The API validates the ranges and refuses to enable enforcement while any active office is unconfigured. Do not enter example or guessed public IP addresses.
+
+Express trusts forwarded client addresses only from `TRUSTED_PROXY_IPS`, a comma-separated set of proxy IPs/CIDRs. Determine the actual cPanel/Apache proxy addresses with the hosting administrator before setting this value. The default is empty, which means forwarded headers are not trusted. Attendance enforcement remains disabled until office configuration and the proxy address have been verified.
+
+Registered devices are identified by a random 256-bit credential in an HttpOnly cookie; only its SHA-256 verifier is stored. Cookies are Secure in production and use SameSite=Lax. Login transactionally revokes the user's earlier device sessions and refresh tokens before issuing the new session. Super Admin device revocation invalidates existing access tokens on the next request and revokes refresh tokens. Users can request replacement of one registered device, which remains active until a Super Admin approves the request.
+
+Deploy by applying the new Prisma migration and generating the client before starting the TypeScript build. The migration deliberately does not assign existing employees to an office or configure office networks because those facts must be provided by authorized administrators.

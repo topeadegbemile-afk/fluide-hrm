@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createEmployeeSchema = z.object({
+  officeId: z.string().min(1, "Office is required"),
   employeeNumber: z
     .string()
     .trim()
@@ -28,7 +29,9 @@ export const createEmployeeSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    .email("Please provide a valid email address"),
+    .email("Please provide a valid email address")
+    .or(z.literal(""))
+    .optional(),
 
   phone: z
     .string()
@@ -66,6 +69,7 @@ export const createEmployeeSchema = z.object({
       "CONTRACT",
       "INTERN",
       "TEMPORARY",
+      "HYBRID",
     ])
     .default("FULL_TIME"),
 
@@ -84,10 +88,21 @@ export const createEmployeeSchema = z.object({
     .string()
     .datetime(),
 
+  employmentMonthYear: z.string().optional(),
+
   confirmationDate: z
     .string()
     .datetime()
     .optional(),
+
+  grossSalary: z.string().trim().regex(/^\d+(\.\d{1,2})?$/).optional(),
+  lastSalary: z.string().trim().regex(/^\d+(\.\d{1,2})?$/).optional(),
+  reviewDate: z.string().datetime().optional(),
+  taxId: z.string().trim().max(80).optional(),
+  personalEmail: z.string().trim().email().or(z.literal("")).optional(),
+  bankName: z.string().trim().max(120).optional(),
+  accountName: z.string().trim().max(160).optional(),
+  accountNumber: z.string().trim().max(80).optional(),
 
   departmentId: z
     .string()

@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import {
   createAppraisalCycle,
   createPerformanceReview,
+  deletePerformanceReview,
   getAppraisalCycleById,
   getAppraisalCycles,
   getPerformanceReviewById,
@@ -116,13 +117,13 @@ export async function createReview(req: AuthenticatedRequest, res: Response): Pr
 
     res.status(201).json({
       success: true,
-      message: "Performance review created successfully",
+      message: "Appraisal created successfully",
       data: review,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to create performance review";
+    const message = error instanceof Error ? error.message : "Unable to create appraisal";
     const statusCode =
-      message.includes("permission")
+      message.includes("permission") || message.includes("Only super admins")
         ? 403
         : message.includes("not found")
           ? 404
@@ -153,11 +154,11 @@ export async function getReviews(req: AuthenticatedRequest, res: Response): Prom
 
     res.status(200).json({
       success: true,
-      message: "Performance reviews retrieved successfully",
+      message: "Appraisals retrieved successfully",
       data: reviews,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to retrieve performance reviews";
+    const message = error instanceof Error ? error.message : "Unable to retrieve appraisals";
     res.status(500).json({
       success: false,
       message,
@@ -181,15 +182,15 @@ export async function getReviewById(req: AuthenticatedRequest, res: Response): P
 
     res.status(200).json({
       success: true,
-      message: "Performance review retrieved successfully",
+      message: "Appraisal retrieved successfully",
       data: review,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to retrieve performance review";
+    const message = error instanceof Error ? error.message : "Unable to retrieve appraisal";
     const statusCode =
-      message === "Performance review not found"
+      message === "Appraisal not found"
         ? 404
-        : message === "You do not have access to this performance review"
+        : message === "You do not have access to this appraisal"
           ? 403
           : 500;
 
@@ -216,15 +217,15 @@ export async function updateReview(req: AuthenticatedRequest, res: Response): Pr
 
     res.status(200).json({
       success: true,
-      message: "Performance review updated successfully",
+      message: "Appraisal updated successfully",
       data: review,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update performance review";
+    const message = error instanceof Error ? error.message : "Unable to update appraisal";
     const statusCode =
-      message === "Performance review not found"
+      message === "Appraisal not found"
         ? 404
-        : message.includes("permission")
+        : message.includes("permission") || message.includes("Only super admins")
           ? 403
           : message.includes("Only draft reviews")
             ? 409
@@ -253,15 +254,15 @@ export async function updateReviewStatus(req: AuthenticatedRequest, res: Respons
 
     res.status(200).json({
       success: true,
-      message: "Performance review status updated successfully",
+      message: "Appraisal status updated successfully",
       data: review,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update performance review status";
+    const message = error instanceof Error ? error.message : "Unable to update appraisal status";
     const statusCode =
-      message === "Performance review not found"
+      message === "Appraisal not found"
         ? 404
-        : message.includes("permission")
+        : message.includes("permission") || message.includes("Only super admins")
           ? 403
           : message.includes("Only draft reviews")
             ? 409
@@ -272,5 +273,20 @@ export async function updateReviewStatus(req: AuthenticatedRequest, res: Respons
       message,
       error: "APPRAISAL_STATUS_UPDATE_FAILED",
     });
+  }
+}
+
+export async function deleteReview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required", error: "AUTHENTICATION_REQUIRED" });
+      return;
+    }
+    const result = await deletePerformanceReview(req.user.id, req.params.id as string);
+    res.status(200).json({ success: true, message: "Appraisal deleted successfully", data: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete appraisal";
+    const statusCode = message === "Appraisal not found" ? 404 : message.includes("Only super admins") ? 403 : 500;
+    res.status(statusCode).json({ success: false, message, error: "APPRAISAL_DELETE_FAILED" });
   }
 }

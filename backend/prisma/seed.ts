@@ -148,6 +148,12 @@ const permissions = [
     name: "appraisal:create",
     description: "Create appraisals",
   },
+
+  // Payroll
+  {
+    name: "payroll:manage",
+    description: "Manage payroll and generate payslips",
+  },
   {
     name: "appraisal:read",
     description: "View appraisals",
@@ -173,6 +179,10 @@ const permissions = [
   {
     name: "handbook:update",
     description: "Update handbook content",
+  },
+  {
+    name: "handbook:delete",
+    description: "Delete handbook content",
   },
 
   // Celebrations

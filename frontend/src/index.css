@@ -25,6 +25,12 @@
   --color-hover: #fcfcfc;
   --color-border: #e7e7e7;
   --color-border-strong: #d8d8d8;
+  --surface: #ffffff;
+  --surface-subtle: #f7f8fb;
+  --border: #e4e8ef;
+  --text: #263249;
+  --text-muted: #81899a;
+  --muted: #667085;
   --sidebar-width: 254px;
 
   font-optical-sizing: auto;
@@ -38,6 +44,7 @@ html {
   min-width: 320px;
   min-height: 100%;
   background: var(--color-canvas);
+  color-scheme: light;
 }
 
 body {
@@ -46,6 +53,7 @@ body {
   margin: 0;
   font-family: var(--font-primary);
   background: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 button,

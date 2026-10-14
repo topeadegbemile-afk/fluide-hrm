@@ -2,6 +2,7 @@ import { prisma } from "../config/database.js";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { sendPolicyAnnouncementEmail } from "./email.service.js";
 import type {
   CreateHandbookArticleInput,
   HandbookQueryInput,
@@ -127,6 +128,47 @@ export async function createHandbookArticle(userId: string, data: CreateHandbook
   });
 }
 
+export async function announcePolicyToStaff(policy: { id: string; title: string; summary: string | null }) {
+  const staff = await prisma.user.findMany({
+    where: {
+      status: "ACTIVE",
+      userRoles: {
+        some: {
+          role: {
+            rolePermissions: {
+              some: { permission: { name: "handbook:read" } },
+            },
+          },
+        },
+      },
+    },
+    select: { id: true, employee: { select: { firstName: true, email: true } } },
+  });
+
+  if (staff.length) {
+    try {
+      await prisma.notification.createMany({
+        data: staff.map((user) => ({
+          userId: user.id,
+          title: "A new policy is available",
+          message: policy.title,
+          type: "ANNOUNCEMENT" as const,
+          metadata: { destination: `/policy?article=${encodeURIComponent(policy.id)}` },
+        })),
+      });
+    } catch (error) {
+      console.error("Failed to create policy notifications", error);
+    }
+  }
+
+  const officialEmailStaff = staff.filter((user) => user.employee?.email?.trim());
+  const results = await Promise.allSettled(
+    officialEmailStaff.map((user) => sendPolicyAnnouncementEmail(user.employee!.email!.trim(), user.employee?.firstName ?? null, policy)),
+  );
+  const sent = results.filter((result) => result.status === "fulfilled").length;
+  return { attempted: officialEmailStaff.length, sent, failed: officialEmailStaff.length - sent };
+}
+
 export async function updateHandbookArticle(id: string, data: UpdateHandbookArticleInput) {
   const existing = await prisma.handbookArticle.findUnique({ where: { id } });
   if (!existing) {
@@ -162,6 +204,22 @@ export async function updateHandbookArticle(id: string, data: UpdateHandbookArti
   });
 }
 
+export async function deleteHandbookArticle(id: string) {
+  const existing = await prisma.handbookArticle.findUnique({
+    where: { id },
+    include: { attachments: { select: { storageKey: true } } },
+  });
+  if (!existing) throw new Error("Handbook article not found");
+
+  await prisma.handbookArticle.delete({ where: { id } });
+  await Promise.all(existing.attachments.map(async ({ storageKey }) => {
+    const filePath = resolve(uploadDirectory, storageKey);
+    const relativePath = relative(uploadDirectory, filePath);
+    if (relativePath.startsWith("..") || isAbsolute(relativePath)) return;
+    await unlink(filePath).catch(() => undefined);
+  }));
+}
+
 export async function addPolicyAttachment(articleId: string, fileName: string, mimeType: string, bytes: Buffer) {
   const extension = allowedAttachmentTypes[mimeType];
   if (!extension) throw new Error("Unsupported attachment type. Use PDF, PNG, JPG, TXT, DOCX, or XLSX.");
@@ -182,6 +240,22 @@ export async function addPolicyAttachment(articleId: string, fileName: string, m
     await unlink(filePath).catch(() => undefined);
     throw error;
   }
+}
+
+export async function deletePolicyAttachment(articleId: string, attachmentId: string) {
+  const attachment = await prisma.policyAttachment.findFirst({
+    where: { id: attachmentId, articleId },
+    select: { id: true, storageKey: true },
+  });
+  if (!attachment) throw new Error("Policy attachment not found");
+
+  await prisma.policyAttachment.delete({ where: { id: attachment.id } });
+  const filePath = resolve(uploadDirectory, attachment.storageKey);
+  const relativePath = relative(uploadDirectory, filePath);
+  if (!relativePath.startsWith("..") && !isAbsolute(relativePath)) {
+    await unlink(filePath).catch(() => undefined);
+  }
+  return { id: attachment.id, deleted: true };
 }
 
 export async function getPolicyAttachment(attachmentId: string, includeDrafts = false) {

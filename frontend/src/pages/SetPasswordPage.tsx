@@ -42,7 +42,7 @@ export function SetPasswordPage() {
     <main className="login-page">
       <section className="login-panel" aria-labelledby="setup-password-heading">
         <img className="login-logo" src={logoSrc} alt="Fluidé Homes" />
-        <p className="eyebrow">PEOPLE OPERATIONS</p>
+        <p className="eyebrow">PEOPLE. PERFORMANCE. PROGRESS.</p>
         <h1 id="setup-password-heading">Set your password</h1>
         <p className="login-intro">Choose a password to access your Fluidé Homes workspace.</p>
         {complete ? (
@@ -63,7 +63,7 @@ export function SetPasswordPage() {
           </form>
         )}
       </section>
-      <footer className="login-footer">FLUIDÉ HOMES <span>·</span> PEOPLE OPERATIONS</footer>
+      <footer className="login-footer">FLUIDÉ HOMES <span>·</span> PEOPLE. PERFORMANCE. PROGRESS.</footer>
     </main>
   )
 }

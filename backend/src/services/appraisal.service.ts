@@ -110,17 +110,15 @@ export async function getAppraisalCycleById(userId: string, cycleId: string) {
 
 export async function createPerformanceReview(userId: string, data: CreatePerformanceReviewInput) {
   const roles = await getUserRoles(userId);
+  if (!hasRole(roles, "SUPER_ADMIN")) {
+    throw new Error("Only super admins can manage appraisals");
+  }
   const currentEmployee = await getEmployeeForUser(userId);
 
   const employeeId = data.employeeId ?? currentEmployee?.employee?.id;
 
   if (!employeeId) {
-    throw new Error("Employee profile is required to manage performance reviews");
-  }
-
-  const hasAccess = hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") || employeeId === currentEmployee?.employee?.id;
-  if (!hasAccess) {
-    throw new Error("You do not have permission to create this performance review");
+    throw new Error("Employee profile is required to manage appraisals");
   }
 
   const cycle = await prisma.appraisalCycle.findUnique({ where: { id: data.cycleId } });
@@ -129,7 +127,7 @@ export async function createPerformanceReview(userId: string, data: CreatePerfor
   }
 
   if (cycle.status === "CLOSED") {
-    throw new Error("Closed appraisal cycles cannot receive new performance reviews");
+    throw new Error("Closed appraisal cycles cannot receive new appraisals");
   }
 
   const existingReview = await prisma.performanceReview.findFirst({
@@ -140,7 +138,7 @@ export async function createPerformanceReview(userId: string, data: CreatePerfor
   });
 
   if (existingReview) {
-    throw new Error("A performance review already exists for this employee in the selected cycle");
+    throw new Error("An appraisal already exists for this employee in the selected cycle");
   }
 
   return prisma.performanceReview.create({
@@ -178,7 +176,7 @@ export async function getPerformanceReviews(userId: string, employeeId?: string)
   }
 
   if (!targetEmployeeId) {
-    throw new Error("Employee profile is required to view performance reviews");
+    throw new Error("Employee profile is required to view appraisals");
   }
 
   return prisma.performanceReview.findMany({
@@ -197,14 +195,14 @@ export async function getPerformanceReviewById(userId: string, reviewId: string)
   });
 
   if (!review) {
-    throw new Error("Performance review not found");
+    throw new Error("Appraisal not found");
   }
 
   if (hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") || review.employeeId === currentEmployee?.employee?.id) {
     return review;
   }
 
-  throw new Error("You do not have access to this performance review");
+  throw new Error("You do not have access to this appraisal");
 }
 
 export async function updatePerformanceReview(
@@ -213,20 +211,13 @@ export async function updatePerformanceReview(
   data: UpdatePerformanceReviewInput
 ) {
   const roles = await getUserRoles(userId);
-  const currentEmployee = await getEmployeeForUser(userId);
+  if (!hasRole(roles, "SUPER_ADMIN")) {
+    throw new Error("Only super admins can manage appraisals");
+  }
   const review = await prisma.performanceReview.findUnique({ where: { id: reviewId } });
 
   if (!review) {
-    throw new Error("Performance review not found");
-  }
-
-  const isOwnReview = review.employeeId === currentEmployee?.employee?.id;
-  if (!hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") && !isOwnReview) {
-    throw new Error("You do not have permission to update this performance review");
-  }
-
-  if (!hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") && review.status !== "DRAFT") {
-    throw new Error("Only draft reviews can be edited by the employee");
+    throw new Error("Appraisal not found");
   }
 
   const update: Record<string, unknown> = {
@@ -258,20 +249,14 @@ export async function updatePerformanceReviewStatus(
   data: UpdatePerformanceReviewStatusInput
 ) {
   const roles = await getUserRoles(userId);
+  if (!hasRole(roles, "SUPER_ADMIN")) {
+    throw new Error("Only super admins can manage appraisals");
+  }
   const currentEmployee = await getEmployeeForUser(userId);
   const review = await prisma.performanceReview.findUnique({ where: { id: reviewId } });
 
   if (!review) {
-    throw new Error("Performance review not found");
-  }
-
-  const isOwnReview = review.employeeId === currentEmployee?.employee?.id;
-  if (!hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") && !isOwnReview) {
-    throw new Error("You do not have permission to update this review status");
-  }
-
-  if (!hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") && review.status !== "DRAFT") {
-    throw new Error("Only draft reviews can be submitted by the employee");
+    throw new Error("Appraisal not found");
   }
 
   const update: Record<string, unknown> = {
@@ -286,7 +271,7 @@ export async function updatePerformanceReviewStatus(
   if (data.status === "SUBMITTED") update.submittedAt = new Date();
   if (["APPROVED", "REJECTED", "IN_REVIEW"].includes(data.status)) update.reviewedAt = new Date();
 
-  if (hasRole(roles, "SUPER_ADMIN", "HR", "MANAGER") && !isOwnReview) {
+  if (review.employeeId !== currentEmployee?.employee?.id) {
     update.reviewerId = currentEmployee?.employee?.id ?? review.reviewerId;
   }
 
@@ -295,4 +280,17 @@ export async function updatePerformanceReviewStatus(
     data: update,
     include: reviewInclude,
   });
+}
+
+export async function deletePerformanceReview(userId: string, reviewId: string) {
+  const roles = await getUserRoles(userId);
+  if (!hasRole(roles, "SUPER_ADMIN")) {
+    throw new Error("Only super admins can manage appraisals");
+  }
+
+  const review = await prisma.performanceReview.findUnique({ where: { id: reviewId } });
+  if (!review) throw new Error("Appraisal not found");
+
+  await prisma.performanceReview.delete({ where: { id: reviewId } });
+  return { id: reviewId, deleted: true };
 }

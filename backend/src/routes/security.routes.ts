@@ -1,0 +1,26 @@
+import { Router } from "express";
+import { z } from "zod";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { requireRole } from "../middleware/rbac.middleware.js";
+import { requirePermission } from "../middleware/rbac.middleware.js";
+import { validate } from "../middleware/validation.middleware.js";
+import { approveReplacement, createReplacementRequest, devices, events, myDevices, officeOptions, offices, replacementRequests, rejectReplacement, removeDevice, setEnforcement, setOfficeNetworks, setOfficeStatus, settings } from "../controllers/security.controller.js";
+
+const router = Router();
+const superAdmin = requireRole("SUPER_ADMIN");
+router.get("/office-options", authenticate, requirePermission("employee:read"), officeOptions);
+router.get("/my-devices", authenticate, myDevices);
+router.post("/replacement-requests", authenticate, validate(z.object({ deviceId: z.string().min(1), reason: z.string().trim().min(5).max(500) })), createReplacementRequest);
+router.use(authenticate, superAdmin);
+router.get("/offices", offices);
+router.patch("/offices/:id/networks", validate(z.object({ approvedNetworks: z.array(z.string().trim().min(1).max(80)).max(100) })), setOfficeNetworks);
+router.patch("/offices/:id/status", validate(z.object({ isActive: z.boolean() })), setOfficeStatus);
+router.get("/settings", settings);
+router.patch("/settings/attendance-enforcement", validate(z.object({ enabled: z.boolean() })), setEnforcement);
+router.get("/events", events);
+router.get("/devices", devices);
+router.delete("/devices/:id", removeDevice);
+router.get("/replacement-requests", replacementRequests);
+router.post("/replacement-requests/:id/approve", approveReplacement);
+router.post("/replacement-requests/:id/reject", rejectReplacement);
+export default router;

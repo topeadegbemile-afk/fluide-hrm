@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bell,
+  Banknote,
   BookOpen,
   BriefcaseBusiness,
   Building2,
@@ -18,6 +19,7 @@ import {
   Moon,
   Network,
   PartyPopper,
+  Search,
   Settings,
   Shield,
   Sun,
@@ -45,6 +47,8 @@ import { UsersPage } from './pages/UsersPage'
 import { RolesPage } from './pages/RolesPage'
 import { AuditLogsPage } from './pages/AuditLogsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SecurityPage } from './pages/SecurityPage'
+import { PayrollPage } from './pages/PayrollPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { CollaborationPage } from './pages/CollaborationPage'
 import { api } from './lib/api'
@@ -57,6 +61,7 @@ type NavigationItem = {
   path: string
   icon: LucideIcon
   permission?: string
+  superAdminOnly?: boolean
 }
 
 type NavigationSection = {
@@ -84,9 +89,10 @@ const navigation: NavigationSection[] = [
     items: [
       { label: 'Attendance', path: '/attendance', icon: Clock3, permission: 'attendance:read' },
       { label: 'Leave', path: '/leaves', icon: CalendarDays, permission: 'leave:read' },
-      { label: 'Performance', path: '/appraisals', icon: ClipboardList, permission: 'appraisal:read' },
+      { label: 'Appraisals', path: '/appraisals', icon: ClipboardList, permission: 'appraisal:read' },
       { label: 'Celebrations', path: '/celebrations', icon: PartyPopper, permission: 'celebration:read' },
       { label: 'Policy', path: '/policy', icon: BookOpen, permission: 'handbook:read' },
+      { label: 'Payroll', path: '/payroll', icon: Banknote },
       { label: 'Team chat', path: '/collaboration', icon: MessageCircle },
     ],
   },
@@ -98,6 +104,7 @@ const navigation: NavigationSection[] = [
       { label: 'Users', path: '/users', icon: UsersRound, permission: 'user:read' },
       { label: 'Roles & permissions', path: '/roles', icon: Shield, permission: 'role:read' },
       { label: 'Audit logs', path: '/audit-logs', icon: FileText, permission: 'audit:read' },
+      { label: 'Security', path: '/security', icon: Shield, superAdminOnly: true },
       { label: 'Settings', path: '/settings', icon: Settings },
     ],
   },
@@ -106,7 +113,7 @@ const navigation: NavigationSection[] = [
 const pages = navigation.flatMap((section) => section.items)
 
 function Sidebar({ onNavigate, theme }: { onNavigate: () => void; theme: 'light' | 'dark' }) {
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
 
   return (
     <aside className="sidebar">
@@ -114,12 +121,12 @@ function Sidebar({ onNavigate, theme }: { onNavigate: () => void; theme: 'light'
         <img src={theme === 'dark' ? '/fluide-logo-white.png' : '/fluide-logo.png'} alt="Fluidé Homes" />
       </NavLink>
 
-      <div className="workspace-label">PEOPLE OPERATIONS</div>
+      <div className="workspace-label">PEOPLE. PERFORMANCE. PROGRESS.</div>
 
       <nav className="main-navigation" aria-label="Main navigation">
         {navigation.map((section) => {
           const visibleItems = section.items.filter(
-            (item) => !item.permission || hasPermission(item.permission),
+            (item) => (!item.permission || hasPermission(item.permission)) && (!item.superAdminOnly || user?.roles.includes('SUPER_ADMIN')),
           )
           if (!visibleItems.length) return null
 
@@ -168,6 +175,9 @@ function AppShell() {
   const navigate = useNavigate()
   const canReadNotifications = hasPermission('notification:read')
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [notificationItems, setNotificationItems] = useState<Array<{ id: string; title: string; message: string; isRead: boolean; createdAt: string; metadata?: { destination?: string } | null }>>([])
+  const [notificationOpen, setNotificationOpen] = useState(false)
+  const [notificationSearch, setNotificationSearch] = useState('')
   const [liveNotification, setLiveNotification] = useState<{ id: string; title: string; message: string } | null>(null)
   const page = pages.find((item) => item.path === location.pathname) ?? pages[0]
   const isDashboard = location.pathname === '/'
@@ -183,8 +193,9 @@ function AppShell() {
 
     async function refreshNotifications() {
       try {
-        const notifications = await api.get<Array<{ id: string; title: string; message: string; isRead: boolean }>>('/notifications')
+        const notifications = await api.get<Array<{ id: string; title: string; message: string; isRead: boolean; createdAt: string; metadata?: { destination?: string } | null }>>('/notifications')
         if (!active) return
+        setNotificationItems(notifications)
         setUnreadNotifications(notifications.filter((item) => !item.isRead).length)
         if (!isInitialLoad) {
           const incoming = notifications.find((item) => !knownIds.has(item.id) && !item.isRead)
@@ -210,6 +221,18 @@ function AppShell() {
 
   function toggleTheme() {
     setTheme(theme === 'light' ? 'dark' : 'light')
+  }
+
+  async function openNotification(item: typeof notificationItems[number]) {
+    if (!item.isRead) {
+      try {
+        await api.patch(`/notifications/${item.id}`, { isRead: true })
+        setNotificationItems((items) => items.map((current) => current.id === item.id ? { ...current, isRead: true } : current))
+        setUnreadNotifications((count) => Math.max(0, count - 1))
+      } catch { /* The notifications page can surface update errors. */ }
+    }
+    setNotificationOpen(false)
+    navigate(item.metadata?.destination || '/notifications')
   }
 
   async function handleLogout() {
@@ -252,10 +275,21 @@ function AppShell() {
             {user?.employee && <EmployeeAvatar className="topbar-avatar" photo={user.employee.profilePhoto} name={displayName} />}
             <span className="account-name">{displayName}</span>
             {canReadNotifications && (
-              <button className="app-notification-button" type="button" onClick={() => navigate('/notifications')} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ''}`} title="Notifications">
+              <>
+              <button className="app-notification-button" type="button" onClick={() => setNotificationOpen((open) => !open)} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ''}`} title="Notifications" aria-expanded={notificationOpen}>
                 <Bell size={17} aria-hidden="true" />
                 {unreadNotifications > 0 && <span>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}
               </button>
+              {notificationOpen && <div className="app-notification-popover" role="dialog" aria-label="Notifications">
+                <div className="app-notification-popover-heading"><strong>Notifications</strong><span>{unreadNotifications} unread</span></div>
+                <label className="app-notification-search"><Search size={14} /><input value={notificationSearch} onChange={(event) => setNotificationSearch(event.target.value)} placeholder="Search notifications" aria-label="Search notifications" /></label>
+                <div className="app-notification-results">
+                  {notificationItems.filter((item) => `${item.title} ${item.message}`.toLowerCase().includes(notificationSearch.toLowerCase())).slice(0, 8).map((item) => <button className={`app-notification-result${item.isRead ? '' : ' is-unread'}`} type="button" key={item.id} onClick={() => void openNotification(item)}><strong>{item.title}</strong><span>{item.message}</span></button>)}
+                  {!notificationItems.some((item) => `${item.title} ${item.message}`.toLowerCase().includes(notificationSearch.toLowerCase())) && <p className="app-notification-empty">No pending requests at this time.</p>}
+                </div>
+                <button className="app-notification-all" type="button" onClick={() => { setNotificationOpen(false); navigate('/notifications') }}>View all notifications</button>
+              </div>}
+              </>
             )}
             <button
               className="theme-toggle"
@@ -284,11 +318,11 @@ function AppShell() {
 
           <div className="page-heading">
             <div>
-              <p className="eyebrow">{isDashboard ? 'PEOPLE OPERATIONS' : 'HR MANAGEMENT'}</p>
+      <p className="eyebrow">{isDashboard ? 'PEOPLE. PERFORMANCE. PROGRESS.' : 'HR MANAGEMENT'}</p>
               <h1>{page.label}</h1>
               <p className="page-description">
                 {isDashboard
-                  ? 'A considered workspace for your people and operations.'
+                  ? 'A considered workspace for People. Appraisals. Progress.'
                   : `The ${page.label.toLowerCase()} workspace for Fluidé Homes.`}
               </p>
             </div>
@@ -328,6 +362,7 @@ function App() {
           <Route path="appraisals" element={<AppraisalsPage />} />
           <Route path="celebrations" element={<CelebrationsPage />} />
           <Route path="policy" element={<HandbookPage />} />
+          <Route path="payroll" element={<PayrollPage />} />
           <Route path="handbook" element={<Navigate to="/policy" replace />} />
           <Route path="collaboration" element={<CollaborationPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -336,6 +371,7 @@ function App() {
           <Route path="roles" element={<RolesPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="security" element={<SecurityPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

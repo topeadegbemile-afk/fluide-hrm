@@ -4,9 +4,13 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   ChartNoAxesCombined,
+  BookOpen,
   CircleAlert,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   FileText,
+  Download,
   Grid2X2,
   LoaderCircle,
   List,
@@ -29,6 +33,72 @@ type DashboardStatistics = {
   appraisals: number
   celebrations: number
   generatedAt: string
+}
+
+type PolicyAttachment = { id: string; fileName: string; mimeType: string; size: number }
+type DashboardPolicy = { id: string; title: string; category: string; summary: string | null; attachments: PolicyAttachment[] }
+type DashboardPolicyResult = { items: DashboardPolicy[]; pagination: { totalPages: number; total: number } }
+
+function DashboardPolicies() {
+  const { hasPermission } = useAuth()
+  const canReadPolicies = hasPermission('handbook:read')
+  const [policies, setPolicies] = useState<DashboardPolicy[]>([])
+  const [loading, setLoading] = useState(canReadPolicies)
+  const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+
+  useEffect(() => {
+    if (!canReadPolicies) return
+    let active = true
+    setLoading(true)
+    void api.get<DashboardPolicyResult>(`/handbook?page=${page}&pageSize=2`).then((result) => {
+      if (!active) return
+      setPolicies(result.items)
+      setTotalPages(Math.max(1, result.pagination.totalPages))
+      setError('')
+    }).catch((cause: unknown) => {
+      if (!active) return
+      setError(cause instanceof ApiError ? cause.message : 'Unable to load company policies.')
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
+  }, [canReadPolicies, page])
+
+  async function downloadAttachment(attachment: PolicyAttachment) {
+    try {
+      const blob = await api.download(`/handbook/attachments/${attachment.id}`)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = attachment.fileName
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (cause) {
+      window.alert(cause instanceof ApiError ? cause.message : 'Could not download this policy attachment.')
+    }
+  }
+
+  if (!canReadPolicies) return null
+
+  return <section className="dashboard-section dashboard-policy-section" aria-labelledby="dashboard-policies-title">
+    <div className="section-heading">
+      <div><p className="eyebrow">EMPLOYEE RESOURCES</p><h3 id="dashboard-policies-title">Company policies</h3></div>
+      <BookOpen size={18} aria-hidden="true" />
+    </div>
+    {loading ? <p className="dashboard-policy-status" role="status"><LoaderCircle className="loading-icon" size={16} /> Loading policies…</p>
+      : error ? <p className="dashboard-policy-status" role="alert">{error}</p>
+        : policies.length === 0 ? <p className="dashboard-policy-status">No published policies yet.</p>
+          : <div className="dashboard-policy-list">{policies.map((policy) => <article className="dashboard-policy-item" key={policy.id}>
+            <div className="dashboard-policy-heading"><span>{policy.category}</span><Link to={`/policy?article=${encodeURIComponent(policy.id)}`}>{policy.title}</Link>{policy.summary && <p>{policy.summary}</p>}</div>
+            {policy.attachments.length > 0 && <ul aria-label={`Attachments for ${policy.title}`}>{policy.attachments.map((attachment) => <li key={attachment.id}>
+              <FileText size={14} aria-hidden="true" /><span>{attachment.fileName}</span><button type="button" onClick={() => void downloadAttachment(attachment)} aria-label={`Download ${attachment.fileName}`} title={`Download ${attachment.fileName}`}><Download size={15} aria-hidden="true" /></button>
+            </li>)}</ul>}
+          </article>)}</div>}
+    {!loading && !error && totalPages > 1 && <nav className="dashboard-policy-pagination" aria-label="Company policy pages"><button type="button" className="button-secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}><ChevronLeft size={14} /> Previous</button><span>Page {page} of {totalPages}</span><button type="button" className="button-secondary" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Next <ChevronRight size={14} /></button></nav>}
+    <Link className="dashboard-policy-all" to="/policy">All policies <ArrowUpRight size={14} aria-hidden="true" /></Link>
+  </section>
 }
 
 const metricDefinitions = [
@@ -129,10 +199,10 @@ const serviceGroups = [
     ],
   },
   {
-    label: 'Performance & growth',
+    label: 'Appraisals & growth',
     description: 'Keep up with reviews and company moments.',
     services: [
-      { label: 'Performance', description: 'View performance reviews and appraisals.', href: '/appraisals', permission: 'appraisal:read', icon: ChartNoAxesCombined },
+      { label: 'Appraisals', description: 'View appraisals and development reviews.', href: '/appraisals', permission: 'appraisal:read', icon: ChartNoAxesCombined },
       { label: 'Celebrations', description: 'See team celebrations and milestones.', href: '/celebrations', permission: 'celebration:read', icon: CalendarDays },
     ],
   },
@@ -155,7 +225,7 @@ function MostUsedServices() {
   const mostUsed = [
     { label: 'Attendance', href: '/attendance', permission: 'attendance:read', icon: Clock3 },
     { label: 'Leave requests', href: '/leaves', permission: 'leave:read', icon: CalendarDays },
-    { label: 'Performance', href: '/appraisals', permission: 'appraisal:read', icon: ChartNoAxesCombined },
+    { label: 'Appraisals', href: '/appraisals', permission: 'appraisal:read', icon: ChartNoAxesCombined },
   ].filter((item) => hasPermission(item.permission))
 
   return (
@@ -368,7 +438,7 @@ export function DashboardPage() {
       <section className="dashboard-intro">
         <div>
           <p className="eyebrow">
-            PEOPLE OPERATIONS
+            PEOPLE. PERFORMANCE. PROGRESS.
           </p>
 
           <h2>
@@ -395,6 +465,7 @@ export function DashboardPage() {
       </section>
 
       <MostUsedServices />
+      <DashboardPolicies />
 
       {/* =====================================================
           WORKFORCE OVERVIEW
@@ -545,7 +616,7 @@ export function DashboardPage() {
 
                     <div>
                       <dt>
-                        Performance reviews
+                        Appraisals
                       </dt>
 
                       <dd>

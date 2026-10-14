@@ -1,6 +1,7 @@
 import {
   createAppraisalCycle,
   createPerformanceReview,
+  deletePerformanceReview,
   getAppraisalCycleById,
   getAppraisalCycles,
   getPerformanceReviewById,
@@ -120,7 +121,7 @@ export async function createReview(req, res) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create performance review";
     const statusCode =
-      message.includes("permission")
+      message.includes("permission") || message.includes("Only super admins")
         ? 403
         : message.includes("not found")
           ? 404
@@ -222,7 +223,7 @@ export async function updateReview(req, res) {
     const statusCode =
       message === "Performance review not found"
         ? 404
-        : message.includes("permission")
+        : message.includes("permission") || message.includes("Only super admins")
           ? 403
           : message.includes("Only draft reviews")
             ? 409
@@ -259,7 +260,7 @@ export async function updateReviewStatus(req, res) {
     const statusCode =
       message === "Performance review not found"
         ? 404
-        : message.includes("permission")
+        : message.includes("permission") || message.includes("Only super admins")
           ? 403
           : message.includes("Only draft reviews")
             ? 409
@@ -270,5 +271,20 @@ export async function updateReviewStatus(req, res) {
       message,
       error: "APPRAISAL_STATUS_UPDATE_FAILED",
     });
+  }
+}
+
+export async function deleteReview(req, res) {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Authentication required", error: "AUTHENTICATION_REQUIRED" });
+      return;
+    }
+    const result = await deletePerformanceReview(req.user.id, req.params.id);
+    res.status(200).json({ success: true, message: "Performance review deleted successfully", data: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete performance review";
+    const statusCode = message === "Performance review not found" ? 404 : message.includes("Only super admins") ? 403 : 500;
+    res.status(statusCode).json({ success: false, message, error: "APPRAISAL_DELETE_FAILED" });
   }
 }

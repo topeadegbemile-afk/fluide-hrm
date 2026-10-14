@@ -50,6 +50,8 @@ type CelebrationFields = {
 }
 
 type CelebrationFilter = 'ALL' | 'UPCOMING' | 'PAST' | 'UNSCHEDULED'
+type BirthdayWish = { id: string; message: string; createdAt: string; sender: { id: string; firstName: string; lastName: string } }
+type UpcomingEmployeeCelebration = { id: string; firstName: string; lastName: string; celebrationType: 'BIRTHDAY' | 'WORK_ANNIVERSARY'; celebrationDate: string; daysUntil: number; yearsOfService: number | null; wishes: BirthdayWish[] }
 
 const typeLabels: Record<CelebrationType, string> = {
   BIRTHDAY: 'Birthday',
@@ -188,6 +190,9 @@ function CelebrationDialog({
 export function CelebrationsPage() {
   const { hasPermission, user } = useAuth()
   const [celebrations, setCelebrations] = useState<Celebration[]>([])
+  const [birthdays, setBirthdays] = useState<UpcomingEmployeeCelebration[]>([])
+  const [wishDrafts, setWishDrafts] = useState<Record<string, string>>({})
+  const [sendingWishTo, setSendingWishTo] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<CelebrationFilter>('ALL')
   const [isLoading, setIsLoading] = useState(true)
@@ -216,6 +221,35 @@ export function CelebrationsPage() {
     })
     return () => { cancelled = true }
   }, [canRead, reloadKey])
+
+  useEffect(() => {
+    if (!canRead) return
+    let cancelled = false
+    void api.get<UpcomingEmployeeCelebration[]>('/celebrations/birthdays/upcoming').then((result) => {
+      if (!cancelled) setBirthdays(result)
+    }).catch(() => {
+      if (!cancelled) setBirthdays([])
+    })
+    return () => { cancelled = true }
+  }, [canRead, reloadKey])
+
+  async function sendWish(event: FormEvent<HTMLFormElement>, birthday: UpcomingEmployeeCelebration) {
+    event.preventDefault()
+    const cardKey = `${birthday.id}-${birthday.celebrationType}`
+    const message = wishDrafts[cardKey]?.trim()
+    if (!message) return
+    setSendingWishTo(cardKey)
+    try {
+      await api.post(`/celebrations/${birthday.id}/wishes`, { message, celebrationType: birthday.celebrationType })
+      setWishDrafts((current) => ({ ...current, [cardKey]: '' }))
+      setBirthdays(await api.get<UpcomingEmployeeCelebration[]>('/celebrations/birthdays/upcoming'))
+      setNotice(`Your ${birthday.celebrationType === 'BIRTHDAY' ? 'birthday' : 'work anniversary'} wish was sent to ${birthday.firstName}.`)
+    } catch (cause) {
+      setNotice(cause instanceof ApiError ? cause.message : 'Unable to send your birthday wish.')
+    } finally {
+      setSendingWishTo(null)
+    }
+  }
 
   const filteredCelebrations = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -284,6 +318,20 @@ export function CelebrationsPage() {
       </div>
 
       {notice && <div className="employee-notice" role="status"><Check size={15} /><span>{notice}</span><button type="button" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={15} /></button></div>}
+
+      <section className="birthday-board" aria-label="Upcoming birthdays and work anniversaries">
+        <div className="birthday-board-heading"><div><p className="eyebrow">CELEBRATE YOUR TEAM</p><h2>Upcoming birthdays & work anniversaries</h2><p>Send a wish to a colleague celebrating a birthday or service milestone.</p></div><Gift size={20} aria-hidden="true" /></div>
+        {birthdays.length ? <div className="birthday-board-grid">{birthdays.map((birthday) => {
+          const cardKey = `${birthday.id}-${birthday.celebrationType}`
+          const isBirthday = birthday.celebrationType === 'BIRTHDAY'
+          const occasion = isBirthday ? 'birthday' : `${birthday.yearsOfService}-year work anniversary`
+          return <article className="birthday-card" key={cardKey}>
+            <div className="birthday-card-heading"><span className="birthday-avatar">{birthday.firstName[0]}{birthday.lastName[0]}</span><div><strong>{birthday.firstName} {birthday.lastName}</strong><span>{birthday.daysUntil === 0 ? `Today is their ${occasion}!` : `In ${birthday.daysUntil} day${birthday.daysUntil === 1 ? '' : 's'} · ${formatEventDate(birthday.celebrationDate)}`}</span></div></div>
+            {birthday.wishes.length > 0 && <div className="birthday-wishes">{birthday.wishes.slice(0, 3).map((wish) => <p key={wish.id}><strong>{wish.sender.firstName}</strong>: {wish.message}</p>)}</div>}
+            {user?.employee?.id !== birthday.id && <form className="birthday-wish-form" onSubmit={(event) => void sendWish(event, birthday)}><input value={wishDrafts[cardKey] ?? ''} onChange={(event) => setWishDrafts((current) => ({ ...current, [cardKey]: event.target.value }))} maxLength={500} minLength={2} placeholder={`Write a ${isBirthday ? 'birthday' : 'work anniversary'} wish…`} aria-label={`${isBirthday ? 'Birthday' : 'Work anniversary'} wish for ${birthday.firstName}`} required /><button className="button-secondary" type="submit" disabled={sendingWishTo === cardKey || !(wishDrafts[cardKey] ?? '').trim()}>{sendingWishTo === cardKey ? 'Sending…' : 'Send wish'}</button></form>}
+          </article>
+        })}</div> : <p className="birthday-board-empty">No upcoming birthdays or work anniversaries in the next 30 days.</p>}
+      </section>
 
       <div className="celebration-heading-row">
         <div><h2>Celebration calendar</h2><p>Recognise the people and moments that bring us together.</p></div>

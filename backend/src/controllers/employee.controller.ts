@@ -9,11 +9,17 @@ import {
 } from "../services/employee.service.js";
 import {
   getEmployeePersonalInformation,
+  getEmployeePersonalInformationReviews,
   getOwnPersonalInformation,
+  updateEmployeePersonalInformation as saveEmployeePersonalInformation,
   updateOwnPersonalInformation,
+  reviewEmployeePersonalInformation as reviewEmployeeInformation,
 } from "../services/employee-personal-information.service.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import { createEmployeeSchema } from "../validators/employee.validator.js";
+import { employeePersonalInformationAdminEditSchema } from "../validators/employee-personal-information.validator.js";
+import { employeePersonalInformationReviewSchema } from "../validators/employee-personal-information.validator.js";
+import { prisma } from "../config/database.js";
 import { mayAccessEmployeePhoto, mayUploadEmployeePhoto, readProfilePhoto, saveProfilePhoto } from "../services/profile-photo.service.js";
 
 export async function getMyPersonalInformation(
@@ -89,6 +95,41 @@ export async function getEmployeePersonalInformationById(
       message: "Unable to retrieve employee personal information",
       error: "INTERNAL_SERVER_ERROR",
     });
+  }
+}
+
+export async function updateEmployeePersonalInformation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const employeeId = getRouteParamId(req.params.id);
+    const parsed = employeePersonalInformationAdminEditSchema.parse(req.body);
+    const information = await saveEmployeePersonalInformation(employeeId, parsed);
+    res.status(200).json({ success: true, message: "Employee personal information updated successfully", data: information });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update employee personal information";
+    const status = message === "Employee not found" ? 404 : error instanceof Error && error.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ success: false, message, error: status === 404 ? "EMPLOYEE_NOT_FOUND" : "EMPLOYEE_PERSONAL_INFORMATION_UPDATE_FAILED" });
+  }
+}
+
+export async function getEmployeePersonalInformationReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const records = await getEmployeePersonalInformationReviews();
+    res.status(200).json({ success: true, message: "Employee information awaiting review", data: records });
+  } catch {
+    res.status(500).json({ success: false, message: "Unable to load employee information review queue", error: "EMPLOYEE_INFORMATION_REVIEW_FETCH_FAILED" });
+  }
+}
+
+export async function reviewEmployeePersonalInformation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const employeeId = getRouteParamId(req.params.id);
+    const parsed = employeePersonalInformationReviewSchema.parse(req.body);
+    const result = await reviewEmployeeInformation(employeeId, req.user!.id, parsed.status, parsed.comment);
+    res.status(200).json({ success: true, message: `Employee information ${parsed.status.toLowerCase()}`, data: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to review employee information";
+    const status = message === "Employee information not found" ? 404 : message.includes("already been reviewed") ? 409 : error instanceof Error && error.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ success: false, message, error: "EMPLOYEE_INFORMATION_REVIEW_FAILED" });
   }
 }
 
@@ -183,6 +224,20 @@ export async function bulkCreate(req: Request, res: Response): Promise<void> {
     }
     try {
       const employee = await createEmployee(parsed.data);
+      const personalData = {
+        taxId: parsed.data.taxId ?? "",
+        personalEmail: parsed.data.personalEmail ?? "",
+        bankName: parsed.data.bankName ?? "",
+        accountName: parsed.data.accountName ?? "",
+        accountNumber: parsed.data.accountNumber ?? "",
+      };
+      if (Object.values(personalData).some(Boolean)) {
+        await prisma.employeePersonalInformation.upsert({
+          where: { employeeId: employee.id },
+          create: { employeeId: employee.id, data: personalData, reviewStatus: "APPROVED", reviewedAt: new Date() },
+          update: { data: personalData },
+        });
+      }
       created.push({ row, id: employee.id, employeeNumber: employee.employeeNumber });
     } catch (error) {
       failures.push({
@@ -200,20 +255,54 @@ export async function bulkCreate(req: Request, res: Response): Promise<void> {
   });
 }
 
+async function mayManageEmployeeRecords(userId: string): Promise<boolean> {
+  const role = await prisma.userRole.findFirst({
+    where: {
+      userId,
+      OR: [
+        { role: { name: "SUPER_ADMIN" } },
+        { role: { rolePermissions: { some: { permission: { name: "employee:update" } } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return role !== null;
+}
+
+async function mayReviewEmployeeInformation(userId: string): Promise<boolean> {
+  const role = await prisma.userRole.findFirst({
+    where: { userId, role: { name: { in: ["SUPER_ADMIN", "HR"] } } },
+    select: { id: true },
+  });
+  return role !== null;
+}
+
 /**
  * GET /api/v1/employees
  */
 export async function getAll(
-  _req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> {
   try {
     const employees = await getEmployees();
+    const canSeeCompensation = await mayManageEmployeeRecords(req.user!.id);
+    const canReviewPersonalInformation = await mayReviewEmployeeInformation(req.user!.id);
+    const data = employees.map((employee) => {
+      const { grossSalary, lastSalary, reviewDate, personalInformation, ...profile } = employee;
+      return {
+        ...profile,
+        ...(canSeeCompensation ? { grossSalary, lastSalary, reviewDate } : {}),
+        ...(canSeeCompensation && personalInformation
+          ? { personalInformation: canReviewPersonalInformation ? personalInformation : { ...personalInformation, proposedData: null, reviewBaseData: null } }
+          : {}),
+      };
+    });
 
     res.status(200).json({
       success: true,
       message: "Employees retrieved successfully",
-      data: employees,
+      data,
     });
   } catch {
     res.status(500).json({
@@ -228,17 +317,19 @@ export async function getAll(
  * GET /api/v1/employees/:id
  */
 export async function getOne(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> {
   try {
     const employeeId = getRouteParamId(req.params.id);
     const employee = await getEmployeeById(employeeId);
+    const canSeeCompensation = await mayManageEmployeeRecords(req.user!.id);
+    const data = canSeeCompensation ? employee : (({ grossSalary, lastSalary, reviewDate, ...record }) => record)(employee);
 
     res.status(200).json({
       success: true,
       message: "Employee retrieved successfully",
-      data: employee,
+      data,
     });
   } catch (error) {
     const message =
